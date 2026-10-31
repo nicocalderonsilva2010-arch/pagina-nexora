@@ -13,7 +13,7 @@ const $$ = (selector, scope=document) => [...scope.querySelectorAll(selector)];
 const readList = key => { try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch { return []; } };
 let favorites = new Set(readList('nexoraFavs'));
 let recent = readList('nexoraRecent').filter(id => servers.some(server => server.id === id));
-let currentPage = 'home';
+let currentPage = localStorage.getItem('nexoraPage') || 'home';
 let modeChip = '';
 let platform = '';
 let showFavorites = false;
@@ -53,6 +53,7 @@ function toast(message, sound='success') {
 function navigate(page, options={}) {
   if (!$('#page-' + page)) return;
   currentPage = page;
+  localStorage.setItem('nexoraPage', page);
   $$('.page').forEach(view => view.classList.toggle('active', view.id === 'page-' + page));
   $$('.nav-button').forEach(button => button.classList.toggle('active', button.dataset.page === page));
   $('#crumbCurrent').textContent = $('#page-' + page).dataset.title;
@@ -200,8 +201,9 @@ $$('.screenshot-slot[data-image]').forEach(button=>{const image=new Image();imag
 $$('.creator-photo').forEach(image=>{const showPhoto=()=>image.parentElement.classList.add('has-photo');image.addEventListener('load',showPhoto,{once:true});image.addEventListener('error',()=>image.remove(),{once:true});if(image.complete&&image.naturalWidth)showPhoto()});
 $$('[data-coming]').forEach(link=>link.addEventListener('click',event=>{event.preventDefault();toast(`${link.dataset.coming}: enlace próximamente`)}));
 const revealTargets=$$('#page-home .landing-section,#page-home .feature-card,#page-home .screenshot-slot,#page-home .discover-card,#page-home .download-section,#page-home .team-card,#page-home .community-section');
-if('IntersectionObserver' in window&&!matchMedia('(prefers-reduced-motion: reduce)').matches){
-  const revealObserver=new IntersectionObserver(entries=>entries.forEach(entry=>{if(entry.isIntersecting){entry.target.classList.add('reveal-in');revealObserver.unobserve(entry.target)}}),{threshold:.12});
+const motionReduced=localStorage.getItem('nexoraMotion')==='on'||matchMedia('(prefers-reduced-motion: reduce)').matches;
+if('IntersectionObserver' in window&&!motionReduced){
+  const revealObserver=new IntersectionObserver(entries=>entries.forEach(entry=>{if(entry.isIntersecting){entry.target.classList.add('reveal-in');revealObserver.unobserve(entry.target)}}),{threshold:.08,rootMargin:'0px 0px -6% 0px'});
   revealTargets.forEach(target=>{target.classList.add('reveal-pending');revealObserver.observe(target)});
 }else revealTargets.forEach(target=>target.classList.add('reveal-in'));
 const heroImage=$('.cinema-image');

@@ -1,0 +1,7 @@
+/* NEXORA design tokens: shared palette, surfaces, and focus treatment. */
+:root{--nx-ink:#f1e7df;--nx-muted:#b7a49a;--nx-soft:#d8c5b8;--nx-copper:#c6a18b;--nx-copper-light:#e0c3ad;--nx-brown:#2a201c;--nx-night:#171310;--nx-panel:#211916;--nx-line:rgba(238,218,205,.13);--nx-glass:rgba(34,26,22,.76)}
+html[data-theme="dark"]{--ink:var(--nx-ink);--muted:var(--nx-muted);--line:var(--nx-line);color-scheme:dark}
+html[data-theme="dark"] body{background:radial-gradient(ellipse at 72% -12%,rgba(145,105,88,.13),transparent 44%),linear-gradient(135deg,#151110 0%,#1b1513 54%,#181211 100%);color:var(--nx-ink)}
+html[data-theme="dark"] .ambient{opacity:.06}
+html[data-theme="dark"] :focus-visible{outline:2px solid var(--nx-copper-light);outline-offset:3px}
+html[data-theme="dark"] .toast{border-color:var(--nx-line);background:#2a201c;color:var(--nx-ink)}

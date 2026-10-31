@@ -14,12 +14,16 @@
   <link rel="stylesheet" href="css/motion.css">
   <link rel="stylesheet" href="css/nightcraft.css">
   <link rel="stylesheet" href="css/server-profile.css">
+  <link rel="stylesheet" href="css/nexora-tokens.css">
+  <link rel="stylesheet" href="css/nexora-shell.css">
+  <link rel="stylesheet" href="css/nexora-home.css">
+  <link rel="stylesheet" href="css/nexora-responsive.css">
 </head>
 <body>
   <div class="ambient ambient-one"></div><div class="ambient ambient-two"></div>
   <div class="shell">
     <aside class="sidebar">
-      <button class="brand" data-page="home" aria-label="Ir a Inicio"><span class="brandmark">✦</span><span>NEXORA</span><span class="beta">BETA</span></button>
+      <button class="brand" data-page="home" aria-label="Ir a Inicio"><img class="brand-logo" src="./imagenes/logo/logo.png" alt="" onerror="this.remove()"><span class="brandmark">✦</span><span>NEXORA</span><span class="beta">BETA</span></button>
       <div class="nav-label">Workspace</div>
       <nav class="nav" aria-label="Navegación principal">
         <button class="nav-button active" data-page="home"><span class="ico">⌂</span><span class="label">Inicio</span></button>
@@ -48,9 +52,9 @@
       <section class="page active" id="page-home" data-title="Inicio">
         <div class="landing-nav"><span class="landing-location"><i></i> MINECRAFT · COMMUNITY PLATFORM</span><nav><a href="#vision">El proyecto</a><a href="#features">Launcher</a><a href="#discover">Explorar</a><a href="#nosotros">Nosotros</a></nav><a class="landing-nav-cta" href="#downloads">DOWNLOAD <span>↗</span></a></div>
         <section class="cinema-hero" id="top">
-          <img class="cinema-image" src="./imagenes/banner/banner.png?v=2" data-fallback-src="https://upload.wikimedia.org/wikipedia/commons/a/a0/Bluemap-screenshot_%281%29.png" alt="Paisaje de Minecraft al atardecer con bosque y luz cálida" fetchpriority="high">
+          <video class="cinema-video" autoplay muted loop playsinline preload="metadata" poster="./imagenes/banner/banner.png" aria-hidden="true"><source src="./imagenes/banner/banner.mp4" type="video/mp4"></video><img class="cinema-image" src="./imagenes/banner/banner.png?v=2" data-fallback-src="https://upload.wikimedia.org/wikipedia/commons/a/a0/Bluemap-screenshot_%281%29.png" alt="Paisaje de Minecraft al atardecer con bosque y luz cálida" fetchpriority="high">
           <div class="cinema-shade"></div><div class="cinema-grain"></div><div class="hero-motes" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="hero-voxel voxel-one" aria-hidden="true"></div><div class="hero-voxel voxel-two" aria-hidden="true"></div><div class="hero-voxel voxel-three" aria-hidden="true"></div>
-          <div class="cinema-copy"><span class="cinema-overline"><i></i> YOUR WORLD, YOUR WAY</span><h1>NEXORA</h1><p class="cinema-subtitle">NEXORA LAUNCHER <span>BETA</span></p><p class="cinema-description">El inicio de algo más grande.<br>Juega. Descubre. Pertenece.</p><a class="download-button" href="#downloads"><span class="download-icon">↓</span><span>DOWNLOAD</span><span class="download-platform">WINDOWS · BETA</span></a></div>
+          <div class="cinema-copy"><img class="hero-logo" src="./imagenes/logo/logo.png" alt="Logo de NEXORA" onerror="this.remove()"><span class="hero-emblem" aria-hidden="true">✦</span><span class="cinema-overline"><i></i> YOUR WORLD, YOUR WAY</span><h1>NEXORA</h1><p class="cinema-subtitle">NEXORA LAUNCHER <span>BETA</span></p><p class="cinema-description">El inicio de algo más grande.<br>Juega. Descubre. Pertenece.</p><div class="hero-actions"><a class="download-button" href="#downloads"><span class="download-icon">↓</span><span>DOWNLOAD</span><span class="download-platform">WINDOWS · BETA</span></a><a class="store-button" href="#discover"><span>✦</span> EXPLORAR</a></div></div>
           <div class="cinema-bottom"><span>CREA TU PROPIA HISTORIA</span><a href="https://commons.wikimedia.org/wiki/File:Bluemap-screenshot_(1).png" target="_blank" rel="noreferrer">Mundo de Minecraft · CC0</a><a href="#vision" class="scroll-cue">SCROLL TO EXPLORE <span>↓</span></a></div>
           <div class="cinema-coordinate">NEXORA NETWORK <span>·</span> 001</div>
         </section>

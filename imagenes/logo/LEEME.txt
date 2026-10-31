@@ -1,0 +1,2 @@
+﻿Logo: guarda tu archivo como logo.png para que aparezca en el encabezado y en el hero.
+Video de portada opcional: guarda un MP4 como ../banner/banner.mp4. La imagen banner.png se conserva como poster y respaldo.
