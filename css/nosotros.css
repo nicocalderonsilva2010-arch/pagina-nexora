@@ -1,0 +1,37 @@
+.about-people{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:23px}.about-person{overflow:hidden;border-radius:9px}.about-person-photo{position:relative;display:grid;place-items:center;min-height:230px;overflow:hidden;border-bottom:1px solid rgba(255,255,255,.3);background-color:#746057}.about-person-photo:before,.about-person-photo:after{position:absolute;border:1px solid rgba(255,255,255,.24);border-radius:50%;content:""}.about-person-photo:before{width:240px;height:150px;transform:rotate(-23deg)}.about-person-photo:after{width:145px;height:250px;transform:rotate(38deg)}.about-person-photo .creator-photo{object-position:center 32%}.about-person-photo .photo-hint{gap:9px}.photo-hint{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;gap:5px;color:#fbf1e8;text-align:center;text-shadow:0 0 12px rgba(255,239,224,.3)}.photo-hint>span{display:grid;place-items:center;width:47px;height:47px;border:1px solid rgba(255,255,255,.55);border-radius:15px;background:rgba(255,250,245,.12);box-shadow:0 0 22px rgba(248,219,197,.14),inset 0 1px rgba(255,255,255,.23);font-size:18px;font-weight:600;backdrop-filter:blur(8px)}.photo-hint>small{padding:5px 8px;border:1px solid rgba(255,255,255,.27);border-radius:4px;background:rgba(43,30,25,.49);color:#f2e1d5;font:6px/1.55 var(--mono);letter-spacing:.03em;backdrop-filter:blur(9px)}.about-person-photo.has-photo .photo-hint{opacity:0;transition:opacity .25s}.about-person-photo.has-photo:hover .photo-hint{opacity:1}.about-person-photo>i{position:absolute;z-index:3;top:13px;right:16px;color:#f0d8c5;font-size:14px;font-style:normal;text-shadow:0 0 12px #f0d8c5}.about-person-copy{padding:17px 19px 19px}.about-person-copy .eyebrow{margin-bottom:7px}.about-person-copy h2{margin:0 0 7px;color:#49352e;font-size:23px;font-weight:600;letter-spacing:-.055em}.about-person-copy>p:not(.eyebrow){max-width:470px;margin:0;color:#806e65;font-size:9px;line-height:1.8}.person-signature{display:block;margin-top:15px;color:#a08779;font:6px var(--mono);letter-spacing:.1em}.about-project-note{position:relative;display:flex;align-items:center;gap:16px;margin-top:13px;padding:17px 19px;border-radius:7px}.about-project-note>span{color:#ad8e7e;font-size:20px;text-shadow:0 0 14px rgba(173,142,126,.5)}.about-project-note>p{margin:0;color:#705950;font:italic 14px/1.5 Georgia,serif}.about-project-note>small{margin-left:auto;color:#9a8173;font:6px var(--mono);letter-spacing:.1em;white-space:nowrap}
+html[data-theme="dark"] .about-person-photo{border-color:rgba(255,255,255,.1)}html[data-theme="dark"] .about-person-copy h2{color:#f2e5dc}html[data-theme="dark"] .about-person-copy>p:not(.eyebrow){color:#c0aca1}html[data-theme="dark"] .person-signature{color:#c3a594}html[data-theme="dark"] .about-project-note>p{color:#ebd9cd}html[data-theme="dark"] .about-project-note>small{color:#c4a797}
+@media(max-width:780px){.about-person-photo{min-height:195px}.about-person-copy{padding:14px}.about-person-copy h2{font-size:20px}}
+@media(max-width:560px){.about-people{grid-template-columns:1fr;gap:10px;margin-top:17px}.about-person-photo{min-height:220px}.about-person-copy{padding:14px 15px 16px}.about-project-note{align-items:flex-start;flex-wrap:wrap;padding:14px}.about-project-note>p{flex:1;font-size:12px}.about-project-note>small{width:100%;margin-left:36px}}
+
+/* Retratos redondos y composición a pantalla completa. */
+#page-about.active{display:flex;flex-direction:column;min-height:calc(100vh - 62px);padding-top:32px;padding-bottom:8px}
+#page-about .about-people{flex:1;align-items:stretch;margin:clamp(20px,4.5vh,48px) 0 15px;gap:18px}
+#page-about .about-person{display:flex;flex-direction:column;justify-content:center;align-items:center;gap:18px;min-height:0;padding:24px 25px;border-radius:10px}
+#page-about .about-person-photo{width:clamp(150px,17vw,205px);height:clamp(150px,17vw,205px);min-height:0;aspect-ratio:1;flex:none;margin:0 auto;border:1px solid rgba(255,255,255,.45);border-radius:50%;background-color:#715b50;box-shadow:0 0 0 6px rgba(255,255,255,.14),0 0 24px rgba(175,136,113,.24),0 12px 30px rgba(64,46,43,.13)}
+#page-about .about-person-photo:before,#page-about .about-person-photo:after{display:none}
+#page-about .about-person-photo .creator-photo{z-index:1;object-position:center 35%;opacity:1;filter:saturate(.86);mask-image:none}
+#page-about .about-person-photo .photo-hint{z-index:2;gap:8px}
+#page-about .photo-hint>span{width:56px;height:56px;border-radius:50%;font-size:20px}
+#page-about .photo-hint>small{max-width:180px;padding:6px 9px;border-radius:12px;font-size:7px;line-height:1.55}
+#page-about .about-person-photo>i{top:14px;right:25px}
+#page-about .about-person-copy{max-width:490px;padding:0;text-align:center}
+#page-about .about-person-copy .eyebrow{justify-content:center;margin-bottom:7px}
+#page-about .about-person-copy h2{margin-bottom:9px;font-size:clamp(22px,2.2vw,29px)}
+#page-about .about-person-copy>p:not(.eyebrow){max-width:430px;font-size:10px;line-height:1.9}
+#page-about .person-signature{margin-top:12px;font-size:7px}
+#page-about .about-project-note{min-height:63px;margin-top:0;padding:13px 18px;border-radius:8px}
+#page-about .about-project-note>p{font-size:15px}
+#page-about>.page-footer{margin-top:auto;padding-top:16px}
+.team-portrait{width:min(172px,72%);height:auto;aspect-ratio:1;margin:14px auto 0;border:1px solid rgba(255,255,255,.38);border-radius:50%;box-shadow:0 0 0 5px rgba(255,255,255,.08),0 0 25px rgba(181,143,121,.18);}
+.team-portrait:before{width:82%;height:52%}.team-portrait:after{width:52%;height:88%}
+.team-portrait .creator-photo{z-index:1;opacity:1;mask-image:none;object-position:center 34%}
+.team-portrait .photo-hint{z-index:2;gap:6px}
+.team-portrait .photo-hint>span{width:43px;height:43px;border-radius:50%;font-size:16px}
+.team-portrait .photo-hint>small{max-width:132px;padding:4px 6px;font-size:5px}
+.team-portrait>i{z-index:3}
+.creator-photo{visibility:visible}
+.team-portrait.has-photo .photo-hint{opacity:0;transition:opacity .25s}.team-portrait.has-photo:hover .photo-hint{opacity:1}
+html[data-theme="dark"] #page-about .about-person-photo{border-color:rgba(255,255,255,.22);box-shadow:0 0 0 6px rgba(255,255,255,.035),0 0 30px rgba(216,169,137,.18),0 12px 30px rgba(0,0,0,.26)}
+html[data-theme="dark"] .team-portrait{border-color:rgba(255,255,255,.22);box-shadow:0 0 0 5px rgba(255,255,255,.035),0 0 25px rgba(181,143,121,.14)}
+@media(max-width:780px){#page-about.active{min-height:calc(100vh - 54px)}#page-about .about-people{margin:25px 0 15px;gap:12px}#page-about .about-person{padding:20px 17px;gap:15px}#page-about .about-person-photo{width:clamp(132px,22vw,175px);height:clamp(132px,22vw,175px)}#page-about .about-person-copy>p:not(.eyebrow){font-size:9px}}
+@media(max-width:560px){#page-about.active{min-height:unset;padding-bottom:20px}#page-about .about-people{grid-template-columns:1fr;margin:12px 0;gap:10px}#page-about .about-person{min-height:340px;padding:20px 18px}#page-about .about-person-photo{width:148px;height:148px}#page-about .about-project-note{align-items:center;min-height:0;padding:13px}#page-about .about-project-note>p{font-size:12px}#page-about .about-project-note>small{width:auto;margin:0 0 0 auto}.team-grid{align-items:start}.team-portrait{width:min(122px,78%);margin-top:10px}}

@@ -1,0 +1,24 @@
+IMAGENES DE NEXORA
+
+Pon aquí tus imágenes usando estos nombres. No tienes que editar el código: la página las detecta automáticamente.
+
+FONDO PRINCIPAL
+1. Abre imagenes > banner.
+2. Pon tu imagen de Minecraft ahí y nómbrala: banner.png
+
+FOTOS DE NOSOTROS
+1. Para tu foto: imagenes > nosotros > elmanxy > foto.png
+2. Para la foto de Spirloz: imagenes > nosotros > spirloz > foto.png
+
+CAPTURAS DEL LAUNCHER
+imagenes > capturas > inicio.png
+imagenes > capturas > biblioteca.png
+imagenes > capturas > explorador.png
+
+OTRAS IMAGENES
+mods: portadas de mods.
+plugins: portadas de plugins.
+servidores: logos y banners de servidores.
+comunidad: imágenes para redes y comunidad.
+
+Usa fotos que ustedes quieran publicar. En la página verás un recuadro con la ruta de cada foto.
