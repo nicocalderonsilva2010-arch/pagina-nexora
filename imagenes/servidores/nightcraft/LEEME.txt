@@ -1,0 +1,1 @@
+﻿Capturas de Nightcraft para la ficha de NEXORA`r`n`r`nColoca aquí hasta tres imágenes con estos nombres exactos:`r`n- captura-1.webp`r`n- captura-2.webp`r`n- captura-3.webp`r`n`r`nLas imágenes aparecerán automáticamente al abrir Ver perfil. Puedes usar JPG o PNG si cambias la extensión en js/app.js.
