@@ -17,6 +17,7 @@ let modeChip = '';
 let platform = '';
 let showFavorites = false;
 let soundEnabled = localStorage.getItem('nexoraSound') !== 'off';
+let darkMode = localStorage.getItem('nexoraTheme') === 'dark';
 let audioContext;
 const overlay = $('#overlay');
 
@@ -151,25 +152,57 @@ function setSound(enabled) {
   if(enabled) playSound('success');
 }
 
+function setTheme(enabled, announce=true) {
+  darkMode=enabled;
+  document.documentElement.dataset.theme=enabled?'dark':'light';
+  $('meta[name="theme-color"]').content=enabled?'#181310':'#402e2b';
+  localStorage.setItem('nexoraTheme',enabled?'dark':'light');
+  $('#themeToggle').checked=enabled;
+  $('#themeIcon').textContent=enabled?'☼':'☾';
+  $('#themeLabel').textContent=enabled?'Claro':'Oscuro';
+  if(announce) toast(enabled?'Modo oscuro activado':'Modo claro activado','tap');
+}
+
 document.addEventListener('click', event=>{
   const navigation=event.target.closest('[data-page]');
   if(navigation){navigate(navigation.dataset.page);return;}
-  if(event.target.closest('button') && !event.target.closest('[data-favorite],[data-copy],[data-detail],[data-open],#openPublish,#soundButton,#clearRecent,#clearActivity,#resetLocal,[type="submit"]')) playSound('tap');
+  if(event.target.closest('button') && !event.target.closest('[data-favorite],[data-copy],[data-detail],[data-open],[data-screenshot],#openPublish,#downloadNotice,#soundButton,#themeButton,#clearRecent,#clearActivity,#resetLocal,[type="submit"]')) playSound('tap');
 });
 
 $('#openPublish').onclick=publish;
 $('#closeModal').onclick=closeModal;
 overlay.addEventListener('click',event=>{if(event.target===overlay)closeModal()});
 document.addEventListener('keydown',event=>{if(event.key==='Escape'&&overlay.classList.contains('open'))closeModal()});
+$('#downloadNotice').onclick=()=>toast('La descarga de NEXORA Beta estará disponible muy pronto');
+$$('[data-screenshot]').forEach(button=>button.addEventListener('click',()=>{
+  $('#modalTitle').textContent=button.dataset.screenshot;
+  $('#modalContent').innerHTML='<div class="preview-placeholder"><span>✧</span><strong>CAPTURA EN PREPARACIÓN</strong><small>El equipo de NEXORA añadirá aquí una imagen real del launcher.</small></div>';
+  overlay.classList.add('open');document.body.classList.add('modal-open');playSound('open');
+}));
+$$('[data-coming]').forEach(link=>link.addEventListener('click',event=>{event.preventDefault();toast(`${link.dataset.coming}: enlace próximamente`)}));
+const revealTargets=$$('#page-home .landing-section,#page-home .feature-card,#page-home .screenshot-slot,#page-home .discover-card,#page-home .download-section,#page-home .team-card,#page-home .community-section');
+if('IntersectionObserver' in window&&!matchMedia('(prefers-reduced-motion: reduce)').matches){
+  const revealObserver=new IntersectionObserver(entries=>entries.forEach(entry=>{if(entry.isIntersecting){entry.target.classList.add('reveal-in');revealObserver.unobserve(entry.target)}}),{threshold:.12});
+  revealTargets.forEach(target=>{target.classList.add('reveal-pending');revealObserver.observe(target)});
+}else revealTargets.forEach(target=>target.classList.add('reveal-in'));
+const heroImage=$('.cinema-image');
+heroImage.addEventListener('error',()=>$('.cinema-hero').classList.add('image-missing'));
+if(!matchMedia('(prefers-reduced-motion: reduce)').matches){
+  let heroFrame=0;
+  window.addEventListener('scroll',()=>{if(heroFrame)return;heroFrame=requestAnimationFrame(()=>{const amount=Math.min(window.scrollY,420)*.035;heroImage.style.transform=`translate3d(0,${amount}px,0) scale(1.035)`;heroFrame=0})},{passive:true});
+}
 ['search','versionFilter','modeFilter'].forEach(id=>$('#'+id).addEventListener(id==='search'?'input':'change',renderServers));
 $('#chips').addEventListener('click',event=>{const button=event.target.closest('[data-mode]');if(!button)return;modeChip=button.dataset.mode;$$('.chip',$('#chips')).forEach(chip=>chip.classList.toggle('active',chip===button));renderServers()});
 $('#platformToggle').addEventListener('click',event=>{const button=event.target.closest('[data-platform]');if(!button)return;platform=button.dataset.platform;$$('button',$('#platformToggle')).forEach(item=>item.classList.toggle('active',item===button));renderServers()});
 $('#clearRecent').onclick=()=>{recent=[];localStorage.removeItem('nexoraRecent');renderRecent();if(currentPage==='activity')renderActivity();toast('Historial limpiado')};
 $('#clearActivity').onclick=()=>{recent=[];localStorage.removeItem('nexoraRecent');renderRecent();renderActivity();toast('Historial limpiado')};
 $('#soundButton').onclick=()=>setSound(!soundEnabled);
+$('#themeButton').onclick=()=>setTheme(!darkMode);
+$('#themeToggle').checked=darkMode;$('#themeToggle').onchange=event=>setTheme(event.target.checked);
 $('#soundToggle').checked=soundEnabled;$('#soundToggle').onchange=event=>setSound(event.target.checked);
 $('#motionToggle').checked=localStorage.getItem('nexoraMotion')==='on';
 $('#motionToggle').onchange=event=>{document.documentElement.classList.toggle('reduce-motion',event.target.checked);localStorage.setItem('nexoraMotion',event.target.checked?'on':'off');toast(event.target.checked?'Animaciones reducidas':'Animaciones activadas','tap')};
 document.documentElement.classList.toggle('reduce-motion',localStorage.getItem('nexoraMotion')==='on');
 $('#resetLocal').onclick=()=>{for(const key of ['nexoraFavs','nexoraRecent','nexoraPendingServers'])localStorage.removeItem(key);favorites.clear();recent=[];renderRecent();renderServers();renderFavorites();renderActivity();toast('Datos locales borrados')};
 renderServers();renderFavorites();renderRecent();navigate('home',{silent:true});
+setTheme(darkMode,false);
