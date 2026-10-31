@@ -1,0 +1,25 @@
+/* Inner pages: useful content width and layouts that use the available space. */
+.page:not(#page-home){width:min(100%,1320px);margin-right:auto;margin-left:auto}
+.page:not(#page-home)>.page-heading{margin-bottom:22px}
+.page:not(#page-home)>.page-footer{margin-top:24px}
+#page-settings .settings-panel{display:grid;width:100%;max-width:none;grid-template-columns:minmax(0,1.12fr) minmax(300px,.88fr);gap:0 30px;padding:25px 28px}
+#page-settings .settings-group{min-width:0}
+#page-settings .settings-group+.settings-group{margin-top:0;padding-left:28px;border-left:1px solid var(--nx-line)}
+#page-settings .settings-footer{grid-column:1/-1;margin-top:20px}
+#page-settings .about-setting>p{max-width:unset;font-size:9px;line-height:1.8}
+#page-settings .setting-row{min-height:63px;padding:13px 3px}
+#page-activity .activity-panel{min-height:260px;padding:24px 26px}
+#page-activity .activity-list{grid-template-columns:repeat(2,minmax(0,1fr));gap:0 22px}
+#page-activity .activity-entry{min-width:0}
+#page-activity .activity-empty{grid-column:1/-1}
+#page-library .library-feature{min-height:320px}
+#page-library .library-copy{max-width:760px;padding:32px 38px}
+#page-library .library-copy>p{max-width:640px;line-height:1.85}
+#page-library .library-notes{gap:14px}
+#page-library .library-notes>div{padding:18px}
+#page-about .about-people{gap:18px}
+#page-about .about-person{min-width:0}
+#page-about .about-project-note{padding:21px 25px}
+#page-favorites .grid,#page-servers .grid{align-items:stretch}
+@media(max-width:900px){.page:not(#page-home){width:100%}#page-settings .settings-panel{grid-template-columns:1fr;gap:18px}#page-settings .settings-group+.settings-group{margin-top:0;padding:18px 0 0;border-top:1px solid var(--nx-line);border-left:0}#page-activity .activity-list{grid-template-columns:1fr}#page-library .library-copy{padding:25px}}
+@media(max-width:700px){.page:not(#page-home){margin:0}#page-settings .settings-panel{padding:17px 15px}#page-settings .settings-group+.settings-group{padding-top:16px}#page-settings .settings-footer{align-items:flex-start;gap:12px;flex-direction:column}#page-activity .activity-panel{min-height:0;padding:16px 14px}#page-library .library-feature{min-height:0}#page-library .library-copy{padding:20px 17px}#page-library .library-notes>div{padding:13px}#page-about .about-project-note{gap:10px;padding:14px}}

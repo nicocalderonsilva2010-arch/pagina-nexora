@@ -19,6 +19,26 @@ let platform = '';
 let showFavorites = false;
 let soundEnabled = localStorage.getItem('nexoraSound') !== 'off';
 let darkMode = localStorage.getItem('nexoraTheme') === 'dark';
+const avatarPresets = {bruma:{mark:'✦',name:'Bruma'},bosque:{mark:'❖',name:'Bosque'},crepusculo:{mark:'☾',name:'Crepúsculo'},ender:{mark:'◉',name:'Ender'},nether:{mark:'◆',name:'Nether'},glaciar:{mark:'❄',name:'Glaciar'}};
+const defaultPlayerProfile = {name:'Nexora Player',avatar:'bruma'};
+let playerProfile = (()=>{try{return {...defaultPlayerProfile,...JSON.parse(localStorage.getItem('nexoraProfile')||'{}')}}catch{return {...defaultPlayerProfile}}})();
+if(!avatarPresets[playerProfile.avatar])playerProfile.avatar=defaultPlayerProfile.avatar;
+let activeSkinId = localStorage.getItem('nexoraActiveSkin') || '';
+let playerModel = localStorage.getItem('nexoraSkinModel') || 'steve';
+if(!['steve','alex'].includes(playerModel))playerModel='steve';
+const defaultEquipment={back:'none',armor:'none',weapon:'none'};
+let playerEquipment=(()=>{try{return {...defaultEquipment,...JSON.parse(localStorage.getItem('nexoraEquipment')||'{}')}}catch{return {...defaultEquipment}}})();
+if(!['none','cape','elytra'].includes(playerEquipment.back))playerEquipment.back='none';
+if(!['none','leather','iron','diamond'].includes(playerEquipment.armor))playerEquipment.armor='none';
+if(!['none','sword','axe'].includes(playerEquipment.weapon))playerEquipment.weapon='none';
+let skinDatabasePromise;
+let skinObjectUrls = [];
+let skinViewerInstance=null;
+let skinViewerResizeObserver=null;
+let currentViewerSkinUrl='';
+let emoteTimeout=0;
+let activeEmote='';
+let temporaryElytra=false;
 let audioContext;
 const overlay = $('#overlay');
 
@@ -54,12 +74,14 @@ function navigate(page, options={}) {
   if (!$('#page-' + page)) return;
   currentPage = page;
   localStorage.setItem('nexoraPage', page);
+  if(skinViewerInstance)skinViewerInstance.renderPaused=page!=='profile';
   $$('.page').forEach(view => view.classList.toggle('active', view.id === 'page-' + page));
   $$('.nav-button').forEach(button => button.classList.toggle('active', button.dataset.page === page));
   $('#crumbCurrent').textContent = $('#page-' + page).dataset.title;
   document.title = `NEXORA — ${$('#page-' + page).dataset.title}`;
   if (page === 'favorites') renderFavorites();
   if (page === 'activity') renderActivity();
+  if (page === 'profile') renderProfile();
   if (!options.silent) playSound('open');
   window.scrollTo({top:0, behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});
 }
@@ -181,6 +203,220 @@ function setTheme(enabled, announce=true) {
   if(announce) toast(enabled?'Modo oscuro activado':'Modo claro activado','tap');
 }
 
+function persistPlayerProfile(){
+  try{localStorage.setItem('nexoraProfile',JSON.stringify(playerProfile));return true}
+  catch{toast('No se pudo guardar el perfil en este navegador');return false}
+}
+
+function applyPlayerProfile(){
+  const preset=avatarPresets[playerProfile.avatar]||avatarPresets.bruma;
+  $$('[data-profile-avatar]').forEach(node=>{node.dataset.avatar=playerProfile.avatar;node.textContent=preset.mark});
+  const name=$('#sidebarProfileName');if(name)name.textContent=playerProfile.name||defaultPlayerProfile.name;
+  const preview=$('#profileAvatarPreview');if(preview){preview.dataset.avatar=playerProfile.avatar;preview.querySelector('span').textContent=preset.mark}
+}
+
+function openSkinDatabase(){
+  if(skinDatabasePromise)return skinDatabasePromise;
+  skinDatabasePromise=new Promise((resolve,reject)=>{
+    if(!('indexedDB' in window)){reject(new Error('Este navegador no permite guardar archivos localmente.'));return}
+    const request=indexedDB.open('nexora-player-assets',1);
+    request.onupgradeneeded=()=>{const db=request.result;if(!db.objectStoreNames.contains('skins'))db.createObjectStore('skins',{keyPath:'id'})};
+    request.onsuccess=()=>resolve(request.result);
+    request.onerror=()=>reject(request.error||new Error('No se pudo abrir la biblioteca local.'));
+  });
+  return skinDatabasePromise;
+}
+
+async function getSavedSkins(){
+  const db=await openSkinDatabase();
+  return new Promise((resolve,reject)=>{const request=db.transaction('skins','readonly').objectStore('skins').getAll();request.onsuccess=()=>resolve(request.result.sort((a,b)=>b.createdAt-a.createdAt));request.onerror=()=>reject(request.error)});
+}
+
+async function saveSkinRecord(record){
+  const db=await openSkinDatabase();
+  return new Promise((resolve,reject)=>{const tx=db.transaction('skins','readwrite');tx.objectStore('skins').put(record);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error)});
+}
+
+async function removeSkinRecord(id){
+  const db=await openSkinDatabase();
+  return new Promise((resolve,reject)=>{const tx=db.transaction('skins','readwrite');tx.objectStore('skins').delete(id);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error)});
+}
+
+async function clearSavedSkins(){
+  try{const db=await openSkinDatabase();await new Promise((resolve,reject)=>{const tx=db.transaction('skins','readwrite');tx.objectStore('skins').clear();tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error)});}
+  catch{/* La base puede no existir en navegadores que no soporten IndexedDB. */}
+}
+
+async function renderSkinLibrary(){
+  const container=$('#skinList');if(!container)return;
+  skinObjectUrls.forEach(url=>URL.revokeObjectURL(url));skinObjectUrls=[];
+  try{
+    const skins=await getSavedSkins();container.replaceChildren();
+    if(!skins.length){const empty=document.createElement('div');empty.className='skin-empty';empty.innerHTML='<span>▧</span><strong>Aún no has añadido skins</strong><small>Cuando subas una, aparecerá aquí.</small>';container.append(empty);return}
+    if(activeSkinId&&!skins.some(skin=>skin.id===activeSkinId)){activeSkinId='';localStorage.removeItem('nexoraActiveSkin')}
+    for(const skin of skins){
+      const card=document.createElement('article');card.className=`skin-card${skin.id===activeSkinId?' is-active':''}`;
+      const previewWrap=document.createElement('div');previewWrap.className='skin-preview-wrap';
+      const image=document.createElement('img');image.className='skin-preview';image.src=URL.createObjectURL(skin.blob);image.alt=`Textura de ${skin.name}`;image.title='Textura PNG';skinObjectUrls.push(image.src);previewWrap.append(image);
+      const copy=document.createElement('div');copy.className='skin-card-copy';const title=document.createElement('strong');title.textContent=skin.name;const dimensions=document.createElement('small');dimensions.textContent=`${skin.width} × ${skin.height} · PNG`;copy.append(title,dimensions);
+      const actions=document.createElement('div');actions.className='skin-card-actions';
+      const activate=document.createElement('button');activate.type='button';activate.dataset.activateSkin=skin.id;activate.textContent=skin.id===activeSkinId?'Activa':'Activar';
+      const remove=document.createElement('button');remove.type='button';remove.className='skin-delete';remove.dataset.deleteSkin=skin.id;remove.textContent='Eliminar';actions.append(activate,remove);copy.append(actions);card.append(previewWrap,copy);container.append(card);
+    }
+  }catch(error){container.innerHTML='<div class="skin-empty"><strong>No se pudo abrir tu biblioteca</strong><small>Prueba en un navegador actualizado.</small></div>';}
+}
+
+function createStarterSkin(model){
+  const canvas=document.createElement('canvas');canvas.width=64;canvas.height=64;
+  const context=canvas.getContext('2d',{willReadFrequently:true});
+  const alex=model==='alex';
+  const colors=alex?{hair:'#b75d32',hairLight:'#d9884e',skin:'#e8b98e',shirt:'#52765b',shirtDark:'#385642',pants:'#654b82',pantsDark:'#49355f'}:{hair:'#624832',hairLight:'#876446',skin:'#dca77c',shirt:'#426e9c',shirtDark:'#31567d',pants:'#34557b',pantsDark:'#263e5f'};
+  const rect=(x,y,w,h,color)=>{context.fillStyle=color;context.fillRect(x,y,w,h)};
+  // Head, face, hair, and the UV rectangles used by the default 64px skin atlas.
+  rect(0,0,32,16,colors.hair);rect(8,8,8,8,colors.skin);rect(8,8,8,2,colors.hair);
+  rect(9,11,2,1,'#493c35');rect(13,11,2,1,'#493c35');rect(11,12,2,2,'#c98665');rect(10,15,4,1,'#92594c');
+  rect(32,0,32,16,'rgba(0,0,0,0)');
+  // Shirt, sleeves, arm skin, and matching second-layer clothing.
+  rect(16,16,24,16,colors.shirt);rect(20,28,8,4,colors.shirtDark);
+  rect(40,16,16,16,colors.shirt);rect(40,27,16,5,colors.skin);rect(40,16,16,3,colors.shirtDark);
+  rect(32,48,16,16,colors.shirt);rect(32,59,16,5,colors.skin);rect(32,48,16,3,colors.shirtDark);
+  rect(16,32,24,16,colors.shirtDark);rect(40,32,16,16,colors.shirtDark);rect(48,48,16,16,colors.shirtDark);
+  // Trousers and the lower legs on both sides of the atlas.
+  rect(0,16,16,16,colors.pants);rect(0,27,16,5,colors.pantsDark);rect(16,48,16,16,colors.pants);rect(16,59,16,5,colors.pantsDark);
+  rect(0,32,16,16,colors.pantsDark);rect(0,48,16,16,colors.pantsDark);
+  return canvas;
+}
+
+function setSkinViewerStatus(message,failed=false){
+  const stage=$('.skin-viewer-stage');const status=$('#skinViewerStatus');
+  if(status)status.textContent=message;
+  if(stage)stage.classList.toggle('skin-viewer-failed',failed);
+}
+
+function resizeSkinViewer(){
+  if(!skinViewerInstance)return;
+  const stage=$('.skin-viewer-stage');if(!stage)return;
+  const bounds=stage.getBoundingClientRect();if(bounds.width<10||bounds.height<10)return;
+  skinViewerInstance.width=Math.round(bounds.width);skinViewerInstance.height=Math.round(bounds.height);
+}
+
+function ensureSkinViewer(){
+  const stage=$('.skin-viewer-stage');const canvas=$('#skin3dCanvas');
+  if(!stage||!canvas)return false;
+  if(skinViewerInstance){resizeSkinViewer();return true}
+  if(!window.skinview3d?.SkinViewer){setSkinViewerStatus('El visor 3D no se pudo cargar. Puedes seguir guardando skins.',true);return false}
+  const bounds=stage.getBoundingClientRect();
+  try{
+    skinViewerInstance=new window.skinview3d.SkinViewer({canvas,width:Math.max(220,Math.round(bounds.width)),height:Math.max(260,Math.round(bounds.height)),pixelRatio:Math.min(window.devicePixelRatio||1,1.5),skin:'./imagenes/elementos/skindefault.png',model:playerModel==='alex'?'slim':'default',zoom:.72,background:null,enableControls:true});
+    // Keep the avatar completely still; OrbitControls still lets the user drag it manually.
+    skinViewerInstance.autoRotate=false;
+    skinViewerInstance.animation=null;
+    stage.classList.add('skin-viewer-ready');
+    setSkinViewerStatus('Arrastra el personaje para girarlo · rueda para acercar');
+    if('ResizeObserver' in window){skinViewerResizeObserver=new ResizeObserver(resizeSkinViewer);skinViewerResizeObserver.observe(stage)}
+    return true;
+  }catch(error){skinViewerInstance=null;setSkinViewerStatus('Tu navegador no pudo iniciar el visor 3D. Aún puedes guardar skins.',true);return false}
+}
+
+async function refreshSkinViewer(){
+  if(!ensureSkinViewer())return;
+  const modelType=playerModel==='alex'?'slim':'default';
+  const selected=$$('[data-model-choice]');selected.forEach(button=>{const active=button.dataset.modelChoice===playerModel;button.classList.toggle('is-selected',active);button.setAttribute('aria-pressed',String(active))});
+  let nextUrl='';let active=null;let fallbackMessage='';
+  try{
+    let skins=[];try{skins=await getSavedSkins()}catch(error){console.warn('La biblioteca local no está disponible; se usará la skin default.',error)}
+    active=skins.find(skin=>skin.id===activeSkinId)||null;
+    if(activeSkinId&&!active){activeSkinId='';localStorage.removeItem('nexoraActiveSkin')}
+    let source='./imagenes/elementos/skindefault.png';
+    if(active){nextUrl=URL.createObjectURL(active.blob);source=nextUrl}
+    if(playerEquipment.armor!=='none')source=await createArmoredSkin(source,playerEquipment.armor);
+    try{await skinViewerInstance.loadSkin(source,{model:modelType})}
+    catch(error){
+      console.error('No se pudo cargar la skin seleccionada:',error);
+      if(active){if(nextUrl)URL.revokeObjectURL(nextUrl);nextUrl='';activeSkinId='';localStorage.removeItem('nexoraActiveSkin');source='./imagenes/elementos/skindefault.png';if(playerEquipment.armor!=='none')source=await createArmoredSkin(source,playerEquipment.armor);await skinViewerInstance.loadSkin(source,{model:modelType});fallbackMessage='La skin guardada falló; se restauró la skin default.'}
+      else{await skinViewerInstance.loadSkin(createStarterSkin(playerModel),{model:modelType});fallbackMessage='No se pudo abrir skindefault.png; se muestra la skin de respaldo.'}
+    }
+    if(currentViewerSkinUrl)URL.revokeObjectURL(currentViewerSkinUrl);
+    currentViewerSkinUrl=nextUrl;
+    skinViewerInstance.playerObject.skin.modelType=modelType;
+    skinViewerInstance.autoRotate=false;
+    const cape=playerEquipment.back==='none'?null:makeCapeTexture();
+    if(cape)await skinViewerInstance.loadCape(cape,{backEquipment:playerEquipment.back==='elytra'?'elytra':'cape'});else skinViewerInstance.loadCape(null);
+    setSkinViewerStatus(fallbackMessage|| (active?`${active.name} · Modelo ${playerModel==='alex'?'Alex':'Steve'} · Arrastra para girar`:`Skin default · Modelo ${playerModel==='alex'?'Alex':'Steve'} · Arrastra para girar`));
+  }catch(error){if(nextUrl)URL.revokeObjectURL(nextUrl);console.error('No se pudo actualizar el visor de skins:',error);setSkinViewerStatus(`No se pudo preparar la textura: ${error?.message||'revisa el PNG y su ruta'}`,true)}
+}
+
+function makeCapeTexture(){
+  const canvas=document.createElement('canvas');canvas.width=64;canvas.height=32;
+  const context=canvas.getContext('2d');context.fillStyle='#765448';context.fillRect(0,0,64,32);context.fillStyle='#b39378';context.fillRect(1,1,62,2);context.fillRect(1,29,62,2);context.fillStyle='#342620';context.fillRect(5,5,54,22);context.fillStyle='#c5a288';context.fillRect(29,7,6,18);context.fillRect(23,13,18,6);return canvas;
+}
+
+async function createArmoredSkin(source,type){
+  const image=new Image();
+  const imageReady=new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=()=>reject(new Error('No se pudo leer la textura de armadura'))});
+  image.src=typeof source==='string'?source:source.toDataURL('image/png');
+  if(!image.complete)await imageReady;else if(!image.naturalWidth)await imageReady;
+  const canvas=document.createElement('canvas');canvas.width=64;canvas.height=64;const context=canvas.getContext('2d');
+  context.imageSmoothingEnabled=false;context.drawImage(image,0,0,64,64);
+  const palettes={leather:['#805335','#a87950','#d0a06c'],iron:['#69716f','#9da19a','#d1c9b9'],diamond:['#397f75','#57b6a0','#a5ead4']};
+  const [base,shade,trim]=palettes[type];
+  const armorRect=(x,y,w,h)=>{context.fillStyle=base;context.fillRect(x,y,w,h);context.fillStyle=shade;context.fillRect(x,y,w,2);context.fillRect(x,y,2,h);context.fillStyle=trim;context.fillRect(x+Math.floor(w/2),y+2,2,Math.max(1,h-4));context.fillStyle=shade;context.fillRect(x,y+h-2,w,2)};
+  armorRect(32,0,32,16); // casco exterior
+  armorRect(16,32,24,16);armorRect(40,32,16,16); // peto y brazos
+  armorRect(0,32,16,16);armorRect(0,48,16,16);armorRect(16,48,16,16);armorRect(48,48,16,16); // piernas y botas
+  return canvas.toDataURL('image/png');
+}
+
+function syncWorkbench(){
+  $$('[data-back-item]').forEach(button=>button.classList.toggle('is-equipped',button.dataset.backItem===playerEquipment.back));
+  $$('[data-armor-item]').forEach(button=>button.classList.toggle('is-equipped',button.dataset.armorItem===playerEquipment.armor));
+  $$('[data-weapon-item]').forEach(button=>button.classList.toggle('is-equipped',button.dataset.weaponItem===playerEquipment.weapon));
+}
+
+function resetEmotePose(){
+  if(!skinViewerInstance)return;
+  skinViewerInstance.animation=null;
+  const player=skinViewerInstance.playerObject;
+  player.rotation.set(0,0,0);player.position.set(0,0,0);player.resetJoints();
+}
+
+async function stopEmote(){
+  clearTimeout(emoteTimeout);emoteTimeout=0;activeEmote='';
+  if(!skinViewerInstance)return;
+  resetEmotePose();
+  if(temporaryElytra){temporaryElytra=false;await skinViewerInstance.loadCape(playerEquipment.back==='none'?null:makeCapeTexture(),{backEquipment:playerEquipment.back==='elytra'?'elytra':'cape'});}
+  $$('[data-emote]').forEach(button=>button.setAttribute('aria-pressed','false'));
+  const status=$('#emoteStatus');if(status)status.textContent='Elige una animación para verla en el personaje.';
+}
+
+async function playEmote(name){
+  if(!ensureSkinViewer())return;
+  if(name==='stop'){await stopEmote();return}
+  if(activeEmote)await stopEmote();
+  clearTimeout(emoteTimeout);activeEmote=name;resetEmotePose();
+  const library=window.skinview3d;
+  const animations={crouch:()=>new library.CrouchAnimation(),hit:()=>{const animation=new library.CrouchAnimation();animation.showProgress=true;animation.runOnce=true;animation.addHitAnimation();return animation},walk:()=>new library.WalkingAnimation(),run:()=>new library.RunningAnimation(),fly:()=>new library.FlyingAnimation(),wave:()=>new library.WaveAnimation('right'),jump:()=>new library.FunctionAnimation((player,progress)=>{const lift=Math.max(0,Math.sin(Math.min(progress,1)*Math.PI));player.position.y=lift*6;player.skin.leftArm.rotation.x=-lift*.85;player.skin.rightArm.rotation.x=-lift*.85})};
+  if(!animations[name])return;
+  if(name==='fly'&&playerEquipment.back!=='elytra'){temporaryElytra=true;await skinViewerInstance.loadCape(makeCapeTexture(),{backEquipment:'elytra'})}
+  const animation=animations[name]();const speeds={crouch:.55,walk:.8,run:.9,jump:1.2};animation.speed=speeds[name]||1;
+  skinViewerInstance.animation=animation;
+  $$('[data-emote]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.emote===name)));
+  const labels={crouch:'Agachándose…',hit:'¡Golpe!',walk:'Caminando…',run:'Corriendo…',fly:'Volando con élitros…',jump:'¡Salto!',wave:'Saludando…'};
+  const status=$('#emoteStatus');if(status)status.textContent=labels[name]||'Animación activa';
+  if(['hit','jump','wave'].includes(name))emoteTimeout=window.setTimeout(()=>stopEmote(),name==='jump'?1050:1400);
+}
+
+function renderProfile(){
+  applyPlayerProfile();
+  const input=$('#profileNameInput');if(input)input.value=playerProfile.name||defaultPlayerProfile.name;
+  $$('[data-avatar-choice]').forEach(button=>{const selected=button.dataset.avatarChoice===playerProfile.avatar;button.classList.toggle('is-selected',selected);button.setAttribute('aria-pressed',String(selected))});
+  $$('[data-model-choice]').forEach(button=>{const selected=button.dataset.modelChoice===playerModel;button.classList.toggle('is-selected',selected);button.setAttribute('aria-pressed',String(selected))});
+  renderSkinLibrary();
+  refreshSkinViewer();
+}
+
+applyPlayerProfile();
+
 document.addEventListener('click', event=>{
   const navigation=event.target.closest('[data-page]');
   if(navigation){navigate(navigation.dataset.page);return;}
@@ -225,7 +461,63 @@ $('#soundToggle').checked=soundEnabled;$('#soundToggle').onchange=event=>setSoun
 $('#motionToggle').checked=localStorage.getItem('nexoraMotion')==='on';
 $('#motionToggle').onchange=event=>{document.documentElement.classList.toggle('reduce-motion',event.target.checked);localStorage.setItem('nexoraMotion',event.target.checked?'on':'off');toast(event.target.checked?'Animaciones reducidas':'Animaciones activadas','tap')};
 document.documentElement.classList.toggle('reduce-motion',localStorage.getItem('nexoraMotion')==='on');
-$('#resetLocal').onclick=()=>{for(const key of ['nexoraFavs','nexoraRecent','nexoraPendingServers'])localStorage.removeItem(key);favorites.clear();recent=[];renderRecent();renderServers();renderFavorites();renderActivity();toast('Datos locales borrados')};
+$('#avatarOptions').addEventListener('click',event=>{
+  const choice=event.target.closest('[data-avatar-choice]');if(!choice)return;
+  playerProfile.avatar=choice.dataset.avatarChoice;persistPlayerProfile();applyPlayerProfile();
+  $$('[data-avatar-choice]').forEach(button=>{const selected=button.dataset.avatarChoice===playerProfile.avatar;button.classList.toggle('is-selected',selected);button.setAttribute('aria-pressed',String(selected))});
+  toast(`Avatar ${avatarPresets[playerProfile.avatar].name} seleccionado`,'tap');
+});
+$('.skin-model-picker').addEventListener('click',event=>{
+  const choice=event.target.closest('[data-model-choice]');if(!choice)return;
+  playerModel=choice.dataset.modelChoice;localStorage.setItem('nexoraSkinModel',playerModel);refreshSkinViewer();toast(`Modelo ${playerModel==='alex'?'Alex':'Steve'} seleccionado`,'tap');
+});
+$('#saveProfileName').onclick=()=>{
+  const name=$('#profileNameInput').value.trim();
+  if(!name){toast('Escribe un nombre para tu perfil','tap');return}
+  playerProfile.name=name;persistPlayerProfile();applyPlayerProfile();toast('Nombre de perfil guardado');
+};
+$('#profileNameInput').addEventListener('keydown',event=>{if(event.key==='Enter')$('#saveProfileName').click()});
+$('#skinUpload').addEventListener('change',async event=>{
+  const files=[...event.target.files];event.target.value='';if(!files.length)return;
+  let saved=0;const errors=[];
+  try{
+    const existing=await getSavedSkins();
+    for(const file of files){
+      if(existing.length+saved>=12){errors.push('Máximo 12 skins');break}
+      if(file.size>2*1024*1024){errors.push(`${file.name}: supera 2 MB`);continue}
+      if(file.type!=='image/png'&&!file.name.toLowerCase().endsWith('.png')){errors.push(`${file.name}: debe ser PNG`);continue}
+      let bitmap;
+      try{bitmap=await createImageBitmap(file)}catch{errors.push(`${file.name}: no se pudo leer la imagen`);continue}
+      const {width,height}=bitmap;bitmap.close();
+      if(!((width===64&&height===64)||(width===64&&height===32))){errors.push(`${file.name}: la textura debe medir 64×64 o 64×32`);continue}
+      const id=globalThis.crypto?.randomUUID?.()||`${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      await saveSkinRecord({id,name:file.name.replace(/\.png$/i,''),blob:file,width,height,createdAt:Date.now()});saved++;
+    }
+    if(saved&&!activeSkinId){const latest=(await getSavedSkins())[0];if(latest){activeSkinId=latest.id;localStorage.setItem('nexoraActiveSkin',activeSkinId)}}
+    await renderSkinLibrary();await refreshSkinViewer();
+    if(saved)toast(`${saved} skin${saved===1?'':'s'} guardada${saved===1?'':'s'} en este dispositivo`);
+    if(errors.length)toast(errors.slice(0,2).join(' · '),'tap');
+  }catch{toast('No se pudo guardar la skin. Revisa el almacenamiento del navegador')}
+});
+$('#skinList').addEventListener('click',async event=>{
+  const activate=event.target.closest('[data-activate-skin]');
+  const remove=event.target.closest('[data-delete-skin]');
+  try{
+    if(activate){activeSkinId=activate.dataset.activateSkin;localStorage.setItem('nexoraActiveSkin',activeSkinId);await renderSkinLibrary();await refreshSkinViewer();toast('Skin marcada como activa','tap')}
+    if(remove){const id=remove.dataset.deleteSkin;await removeSkinRecord(id);if(activeSkinId===id){activeSkinId='';localStorage.removeItem('nexoraActiveSkin')}await renderSkinLibrary();await refreshSkinViewer();toast('Skin eliminada')}
+  }catch{toast('No se pudo actualizar la biblioteca de skins')}
+});
+$('#openSkinWorkbench').addEventListener('click',()=>{const panel=$('#skinWorkbench');const opening=panel.hidden;panel.hidden=!opening;$('#openSkinWorkbench').setAttribute('aria-expanded',String(opening));if(opening)syncWorkbench()});
+$('#closeSkinWorkbench').addEventListener('click',()=>{$('#skinWorkbench').hidden=true;$('#openSkinWorkbench').setAttribute('aria-expanded','false')});
+$('#skinWorkbench').addEventListener('click',event=>{
+  const emote=event.target.closest('[data-emote]');if(emote){playEmote(emote.dataset.emote);return}
+  const choice=event.target.closest('[data-back-item],[data-armor-item],[data-weapon-item]');if(!choice)return;
+  if(choice.dataset.backItem)playerEquipment.back=choice.dataset.backItem;
+  if(choice.dataset.armorItem)playerEquipment.armor=choice.dataset.armorItem;
+  if(choice.dataset.weaponItem)playerEquipment.weapon=choice.dataset.weaponItem;
+  localStorage.setItem('nexoraEquipment',JSON.stringify(playerEquipment));syncWorkbench();refreshSkinViewer();
+});
+$('#resetLocal').onclick=async()=>{for(const key of ['nexoraFavs','nexoraRecent','nexoraPendingServers','nexoraProfile','nexoraActiveSkin','nexoraSkinModel','nexoraEquipment'])localStorage.removeItem(key);favorites.clear();recent=[];playerProfile={...defaultPlayerProfile};activeSkinId='';playerModel='steve';playerEquipment={...defaultEquipment};await clearSavedSkins();applyPlayerProfile();renderRecent();renderServers();renderFavorites();renderActivity();renderProfile();toast('Datos locales borrados')};
 renderServers();renderFavorites();renderRecent();navigate('home',{silent:true});
 setTheme(darkMode,false);
 
