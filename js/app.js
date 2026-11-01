@@ -13,6 +13,18 @@ const $$ = (selector, scope=document) => [...scope.querySelectorAll(selector)];
 const readList = key => { try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch { return []; } };
 let favorites = new Set(readList('nexoraFavs'));
 let recent = readList('nexoraRecent').filter(id => servers.some(server => server.id === id));
+let savedMods = readList('nexoraSavedMods').filter(mod => mod && typeof mod.project_id === 'string');
+let modView = 'catalog';
+let modHits = [];
+let modTotal = 0;
+let modAbortController;
+let modRequestId = 0;
+let modSearchTimer;
+let modrinthLoaded = false;
+const modrinthCache = new Map();
+let playSessions = normalizeActivitySessions(readList('nexoraPlaySessions'));
+let activityConnected = false;
+let activitySearchTimer;
 let currentPage = localStorage.getItem('nexoraPage') || 'home';
 let modeChip = '';
 let platform = '';
@@ -41,6 +53,163 @@ let activeEmote='';
 let temporaryElytra=false;
 let audioContext;
 const overlay = $('#overlay');
+const escapeHTML = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+
+function normalizeActivitySessions(input) {
+  const rows = Array.isArray(input) ? input : Array.isArray(input?.sessions) ? input.sessions : [];
+  return rows.map((session,index)=>{
+    if(!session||typeof session!=='object')return null;
+    const start = typeof session.startedAt === 'number' ? session.startedAt : Date.parse(session.startedAt);
+    const end = session.endedAt == null || session.endedAt === '' ? null : typeof session.endedAt === 'number' ? session.endedAt : Date.parse(session.endedAt);
+    if(!Number.isFinite(start)||start>Date.now()||end!==null&&(!Number.isFinite(end)||end<start))return null;
+    const rawType=String(session.type||session.kind||'server').toLowerCase();
+    const type=['world','singleplayer','single-player'].includes(rawType)?'world':'server';
+    return {id:String(session.id||`${start}-${index}`),type,name:String(session.name||session.worldName||session.serverName||(type==='world'?'Mundo sin nombre':'Servidor')),address:String(session.address||session.serverAddress||''),mode:String(session.mode||''),version:String(session.version||''),edition:String(session.edition||''),startedAt:start,endedAt:end};
+  }).filter(Boolean);
+}
+
+function formatPlayDuration(milliseconds) {
+  const minutes=Math.max(0,Math.floor(milliseconds/60000));
+  const hours=Math.floor(minutes/60),rest=minutes%60;
+  return hours?`${hours} h${rest?` ${rest} min`:''}`:`${minutes} min`;
+}
+function activityDayKey(date) { return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`; }
+function activityDurationByDay(sessions) {
+  const totals=new Map();
+  sessions.forEach(session=>{
+    let cursor=session.startedAt;const end=session.endedAt??Date.now();
+    while(cursor<end){
+      const day=new Date(cursor);day.setHours(0,0,0,0);
+      const next=new Date(day);next.setDate(next.getDate()+1);
+      const portion=Math.min(end,next.getTime())-cursor;
+      const key=activityDayKey(day);totals.set(key,(totals.get(key)||0)+portion);cursor+=portion;
+    }
+  });
+  return totals;
+}
+function activityDurationInRange(session,start,end) {
+  const sessionEnd=session.endedAt??Date.now();
+  return Math.max(0,Math.min(sessionEnd,end)-Math.max(session.startedAt,start));
+}
+function renderPlayActivity() {
+  const page=$('#page-library');if(!page)return;
+  const now=Date.now();
+  const today=new Date();today.setHours(0,0,0,0);
+  const daily=activityDurationByDay(playSessions);
+  $('#activityConnectionStatus').classList.toggle('is-connected',activityConnected);
+  $('#activityConnectionStatus').innerHTML=`<i></i> ${activityConnected?'Launcher conectado':playSessions.length?'Última actividad guardada':'Esperando al launcher'}`;
+
+  const weekItems=Array.from({length:7},(_,index)=>{const day=new Date(today);day.setDate(today.getDate()-6+index);return {day,value:daily.get(activityDayKey(day))||0}});
+  const weekStart=new Date(today);weekStart.setDate(today.getDate()-6);
+  const weekEnd=new Date(today);weekEnd.setDate(today.getDate()+1);
+  const previousStart=new Date(weekStart);previousStart.setDate(weekStart.getDate()-7);
+  const weekTotal=weekItems.reduce((sum,item)=>sum+item.value,0);
+  const previousTotal=playSessions.reduce((sum,session)=>sum+activityDurationInRange(session,previousStart.getTime(),weekStart.getTime()),0);
+  const recentSessions=playSessions.filter(session=>session.startedAt<weekEnd.getTime()&&(session.endedAt??now)>weekStart.getTime());
+  const recentDurations=recentSessions.map(session=>activityDurationInRange(session,weekStart.getTime(),weekEnd.getTime()));
+  $('#activityWeekTime').textContent=formatPlayDuration(weekTotal);
+  const change=$('#activityWeekChange');
+  if(previousTotal===0&&weekTotal===0){change.textContent='—';change.className='activity-week-change'}
+  else if(previousTotal===0){change.textContent='↗ Nuevo';change.className='activity-week-change is-up'}
+  else {const percentage=Math.round((weekTotal-previousTotal)/previousTotal*100);change.textContent=`${percentage>=0?'↗':'↘'} ${Math.abs(percentage)}%`;change.className=`activity-week-change ${percentage>=0?'is-up':'is-down'}`}
+  $('#activityWeekDelta').textContent=weekTotal===0&&previousTotal===0?'Aún no hay partidas registradas esta semana.':previousTotal===0?'Tu primera semana registrada en NEXORA.':weekTotal===previousTotal?`Igual que la semana anterior (${formatPlayDuration(previousTotal)}).`:`Últimos 7 días, ${formatPlayDuration(Math.abs(weekTotal-previousTotal))} ${weekTotal>previousTotal?'más':'menos'} que la semana anterior.`;
+  $('#activityAverage').textContent=recentDurations.length?formatPlayDuration(weekTotal/recentDurations.length):'0 min';
+  $('#activityLongest').textContent=recentDurations.length?formatPlayDuration(Math.max(...recentDurations)):'0 min';
+  $('#activityDays').textContent=`${weekItems.filter(item=>item.value>0).length} de 7`;
+  const maxDay=Math.max(...weekItems.map(item=>item.value),1);
+  $('#activityWeekChart').innerHTML=weekItems.map(({day,value},index)=>{
+    const label=index===6?'Hoy':new Intl.DateTimeFormat('es-CO',{weekday:'short'}).format(day).replace('.','').slice(0,3);
+    const height=value?Math.max(7,Math.round(value/maxDay*100)):3;
+    return `<div class="playtime-day ${index===6?'is-today':''}" title="${escapeHTML(new Intl.DateTimeFormat('es-CO',{weekday:'long',day:'numeric',month:'long'}).format(day))}: ${escapeHTML(formatPlayDuration(value))}"><strong>${value?escapeHTML(formatPlayDuration(value)):''}</strong><div class="playtime-bar-track"><i style="height:${height}%"></i></div><span>${label}</span></div>`;
+  }).join('');
+
+  const placeMap=new Map();
+  playSessions.forEach(session=>{const key=`${session.type}|${session.name}|${session.address}`;const place=placeMap.get(key)||{...session,duration:0,count:0};place.duration+=(session.endedAt??now)-session.startedAt;place.count++;placeMap.set(key,place)});
+  const places=[...placeMap.values()].sort((a,b)=>b.duration-a.duration);
+  const playedServers=places.filter(place=>place.type==='server');
+  const playedWorlds=places.filter(place=>place.type==='world');
+  $('#activityServerCount').textContent=String(playedServers.length);
+  $('#activityServers').innerHTML=playedServers.length?playedServers.slice(0,8).map((place,index)=>{
+    const catalog=servers.find(server=>server.ip.toLowerCase()===(place.address||'').toLowerCase()||server.name.toLowerCase()===place.name.toLowerCase());
+    const badge=place.mode||catalog?.modes?.[0]||place.edition||'SERVER';
+    const details=[`${place.count} ${place.count===1?'partida':'partidas'}`,place.address||place.version||catalog?.versions?.join(' · ')].filter(Boolean).join(' · ');
+    const icon=catalog?.logo?`<img src="${escapeHTML(catalog.logo)}" alt="" loading="lazy">`:`<span>${escapeHTML(catalog?.mark||place.name.slice(0,1).toUpperCase())}</span>`;
+    return `<article class="activity-server-row"><span class="activity-server-logo">${icon}</span><div class="activity-server-copy"><strong>${escapeHTML(place.name)}</strong><small>${escapeHTML(details)}</small></div><span class="activity-server-mode">${escapeHTML(badge)}</span><b class="activity-server-rank">#${index+1}</b></article>`;
+  }).join(''):'<div class="activity-inline-empty">Cuando juegues en un servidor, aparecerá en esta lista.</div>';
+  $('#activityWorldSection').hidden=!playedWorlds.length;
+  $('#activityWorldCount').textContent=String(playedWorlds.length);
+  $('#activityWorlds').innerHTML=playedWorlds.slice(0,6).map((world,index)=>`<div class="activity-world-row"><span>${String(index+1).padStart(2,'0')}</span><strong>${escapeHTML(world.name)}</strong><small>${world.count} ${world.count===1?'partida':'partidas'}</small><b>${escapeHTML(formatPlayDuration(world.duration))}</b></div>`).join('');
+  const sessions=[...playSessions].sort((a,b)=>b.startedAt-a.startedAt).slice(0,10);
+  $('#playSessionList').innerHTML=sessions.length?sessions.map(session=>{
+    const active=session.endedAt===null;
+    const end=session.endedAt??now;
+    const date=new Intl.DateTimeFormat('es-CO',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}).format(session.startedAt);
+    return `<article class="play-session-row"><span class="activity-place-icon">${session.type==='world'?'⌂':'◇'}</span><div><strong>${escapeHTML(session.name)}</strong><small>${session.type==='world'?'Mundo individual':escapeHTML(session.address||'Servidor multiplayer')} · ${escapeHTML(date)}</small></div><span class="play-session-duration">${active?'<i>EN CURSO</i>':escapeHTML(formatPlayDuration(end-session.startedAt))}</span></article>`;
+  }).join(''):'<div class="activity-empty play-session-empty"><span>◷</span><strong>Aún no hay partidas registradas</strong><p>Cuando NEXORA Launcher envíe una sesión, verás aquí su duración, servidor o mundo.</p></div>';
+}
+
+// Puente del launcher: nexoraSyncActivity({sessions:[{id,type:'server'|'world',name,address,startedAt,endedAt}]}).
+// Las fechas aceptan ISO-8601 o milisegundos; endedAt:null representa una partida en curso.
+window.nexoraSyncActivity = payload => {
+  playSessions=normalizeActivitySessions(payload);
+  localStorage.setItem('nexoraPlaySessions',JSON.stringify(playSessions));
+  activityConnected=true;
+  renderPlayActivity();
+  return {received:playSessions.length,totalMilliseconds:playSessions.reduce((sum,item)=>sum+(item.endedAt??Date.now())-item.startedAt,0)};
+};
+window.addEventListener('nexora:activity-sync',event=>window.nexoraSyncActivity(event.detail));
+window.addEventListener('message',event=>{
+  const message=event.data;
+  if(!message||message.type!=='nexora:activity-sync')return;
+  if(event.source!==window&&event.origin!==location.origin&&event.origin!=='null')return;
+  window.nexoraSyncActivity(message.sessions||message.payload||[]);
+});
+window.setInterval(()=>{if(playSessions.some(session=>session.endedAt===null))renderPlayActivity()},60000);
+
+// Aparición progresiva al entrar en pantalla, sin animar continuamente el contenido.
+const revealSelector = [
+  '#page-home .section-heading', '#page-home .vision-layout > *', '#page-home .vision-strip > *',
+  '#page-home .feature-card', '#page-home .screenshot-slot', '#page-home .discover-card',
+  '#page-home .download-content', '#page-home .team-card', '#page-home .team-note',
+  '#page-home .community-links a', '#page-home .landing-footer',
+  '.page:not(#page-home) > .page-heading', '.page:not(#page-home) > .glass-card',
+  '.page:not(#page-home) .server-card', '.page:not(#page-home) .activity-entry',
+  '.page:not(#page-home) .recent-entry', '.page:not(#page-home) .about-person',
+  '.page:not(#page-home) .about-project-note', '.page:not(#page-home) .profile-panel',
+  '.page:not(#page-home) .library-notes > div'
+].join(',');
+let revealObserver;
+function stageVisibleContent(root=document) {
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches || document.documentElement.classList.contains('reduce-motion');
+  const candidates = [];
+  if (root instanceof Element && root.matches(revealSelector)) candidates.push(root);
+  if (root.querySelectorAll) candidates.push(...root.querySelectorAll(revealSelector));
+  const visiblePage = $('.page.active');
+  if (!revealObserver && !reduced && 'IntersectionObserver' in window) {
+    revealObserver = new IntersectionObserver(entries => entries.forEach(entry => {
+      if (!entry.isIntersecting) return;
+      entry.target.classList.add('is-revealed');
+      revealObserver.unobserve(entry.target);
+    }), { rootMargin: '0px 0px -7% 0px', threshold: 0.08 });
+  }
+  candidates.forEach((element, index) => {
+    if (element.dataset.revealReady) return;
+    element.dataset.revealReady = 'true';
+    if (reduced || !revealObserver || (visiblePage && !visiblePage.contains(element))) {
+      element.classList.add('nx-reveal', 'is-revealed');
+      return;
+    }
+    element.style.setProperty('--nx-reveal-delay', `${Math.min((index % 4) * 65, 195)}ms`);
+    element.classList.add('nx-reveal');
+    revealObserver.observe(element);
+  });
+}
+stageVisibleContent();
+const revealMutationObserver = new MutationObserver(records => records.forEach(record => record.addedNodes.forEach(node => {
+  if (node.nodeType === Node.ELEMENT_NODE) stageVisibleContent(node);
+})));
+const pageRoot = $('.main');
+if (pageRoot) revealMutationObserver.observe(pageRoot, { childList: true, subtree: true });
 
 function playSound(kind='tap') {
   if (!soundEnabled) return;
@@ -76,11 +245,13 @@ function navigate(page, options={}) {
   localStorage.setItem('nexoraPage', page);
   if(skinViewerInstance)skinViewerInstance.renderPaused=page!=='profile';
   $$('.page').forEach(view => view.classList.toggle('active', view.id === 'page-' + page));
+  stageVisibleContent($('#page-' + page));
   $$('.nav-button').forEach(button => button.classList.toggle('active', button.dataset.page === page));
   $('#crumbCurrent').textContent = $('#page-' + page).dataset.title;
   document.title = `NEXORA — ${$('#page-' + page).dataset.title}`;
   if (page === 'favorites') renderFavorites();
-  if (page === 'activity') renderActivity();
+  if (page === 'activity') renderModrinth();
+  if (page === 'library') renderPlayActivity();
   if (page === 'profile') renderProfile();
   if (!options.silent) playSound('open');
   window.scrollTo({top:0, behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});
@@ -150,12 +321,98 @@ function renderRecent() {
   $$('.recent-entry', $('#recentList')).forEach(button => button.onclick=()=>openDetails(button.dataset.open));
 }
 
-function renderActivity() {
-  const visits = recent.map(id => servers.find(server => server.id === id)).filter(Boolean);
-  const favoritesList = servers.filter(server => favorites.has(server.id));
-  const rows = [...visits.map(server=>({server, kind:'Visitado recientemente', icon:'◷'})), ...favoritesList.filter(server=>!visits.some(item=>item.id===server.id)).map(server=>({server,kind:'Guardado en favoritos',icon:'♡'}))];
-  $('#activityList').innerHTML = rows.length ? rows.map((item,index)=>`<button class="activity-entry" data-open="${item.server.id}"><span class="activity-index">${String(index+1).padStart(2,'0')}</span><span class="activity-icon">${item.icon}</span><span class="activity-copy"><strong>${item.server.name}</strong><small>${item.kind} · ${item.server.ip}</small></span><span class="activity-arrow">↗</span></button>`).join('') : '<div class="activity-empty"><span>◷</span><strong>Tu recorrido empieza aquí</strong><p>Cuando visites o guardes un servidor, lo verás en esta lista.</p><button class="button button-dark" data-page="servers">Explorar servidores ↗</button></div>';
-  $$('.activity-entry', $('#activityList')).forEach(button=>button.onclick=()=>openDetails(button.dataset.open));
+function renderSavedModCount() { const count=$('#savedModCount');if(count)count.textContent=String(savedMods.length); }
+function formatModCount(value) { return new Intl.NumberFormat('es-CO',{notation:'compact',maximumFractionDigits:1}).format(Number(value)||0); }
+function modProjectUrl(project) {
+  const type=project.project_type==='modpack'?'modpack':project.project_type==='shader'?'shader':project.project_type==='resourcepack'?'resourcepack':'mod';
+  return `https://modrinth.com/${type}/${encodeURIComponent(project.slug||project.project_id)}`;
+}
+function renderModCard(project,index) {
+  const saved=savedMods.some(item=>item.project_id===project.project_id);
+  const icon=project.icon_url?`<img src="${escapeHTML(project.icon_url)}" alt="" loading="lazy" referrerpolicy="no-referrer">`:'<span class="mod-card-icon-fallback">✦</span>';
+  const categories=(project.display_categories||project.categories||[]).slice(0,3).map(category=>`<span>${escapeHTML(category.replace(/_/g,' '))}</span>`).join('');
+  const selectedVersion=$('#modVersionFilter')?.value;
+  const versions=selectedVersion?[selectedVersion]:((project.versions||[]).slice(0,2));
+  const versionTags=versions.map(version=>`<span class="mod-version-tag">${escapeHTML(version)}</span>`).join('');
+  const href=modProjectUrl(project);
+  return `<article class="mod-card" style="--mod-index:${index}"><div class="mod-card-heading"><span class="mod-card-icon">${icon}</span><div class="mod-card-title"><h2>${escapeHTML(project.title||'Mod sin título')}</h2><span>por ${escapeHTML(project.author||'Comunidad Modrinth')}</span></div><button class="mod-save-button ${saved?'is-saved':''}" data-save-mod="${escapeHTML(project.project_id)}" aria-label="${saved?'Quitar de':'Guardar en'} favoritos" title="${saved?'Quitar de guardados':'Guardar mod'}">${saved?'♥':'♡'}</button></div><p class="mod-card-description">${escapeHTML(project.description||'Sin descripción disponible.')}</p><div class="mod-card-tags">${categories}${versionTags}</div><div class="mod-card-footer"><span><b>↓</b> ${formatModCount(project.downloads)} descargas</span><a href="${escapeHTML(href)}" target="_blank" rel="noreferrer">Ver en Modrinth ↗</a></div></article>`;
+}
+function renderModResults() {
+  renderSavedModCount();
+  const grid=$('#modGrid');if(!grid)return;
+  if(modView==='saved'){
+    $('#modResultCount').textContent=`${savedMods.length} guardados`;
+    grid.innerHTML=savedMods.length?savedMods.map((mod,index)=>renderModCard(mod,index)).join(''):'<div class="mods-empty"><span>♡</span><strong>Aún no guardas mods</strong><small>Explora el catálogo y toca el corazón para guardar contenido.</small></div>';
+    $('#modLoadMore').hidden=true;return;
+  }
+  $('#modResultCount').textContent=`${new Intl.NumberFormat('es-CO').format(modTotal)} resultados`;
+  grid.innerHTML=modHits.length?modHits.map(renderModCard).join(''):'<div class="mods-empty"><span>⌕</span><strong>No encontramos resultados</strong><small>Prueba otra búsqueda o cambia los filtros.</small></div>';
+  $('#modLoadMore').hidden=modHits.length>=modTotal||modHits.length===0;
+}
+async function searchModrinth({append=false}={}) {
+  if(modView==='saved'){renderModResults();return}
+  const searchId=++modRequestId;
+  if(modAbortController)modAbortController.abort();
+  modAbortController=new AbortController();
+  const query=$('#modSearch').value.trim();
+  const type=$('#modTypeFilter').value;
+  const loader=$('#modLoaderFilter').value;
+  const version=$('#modVersionFilter').value;
+  const sort=$('#modSort').value;
+  const offset=append?modHits.length:0;
+  const params=new URLSearchParams({query,index:sort,offset:String(offset),limit:'24'});
+  const facets=[];if(type)facets.push([`project_type:${type}`]);if(loader)facets.push([`categories:${loader}`]);if(version)facets.push([`versions:${version}`]);if(facets.length)params.set('facets',JSON.stringify(facets));
+  const cacheKey=params.toString();
+  const cached=modrinthCache.get(cacheKey);
+  if(!append){modHits=[];modTotal=0;$('#modGrid').innerHTML='<div class="mods-loading"><span class="mod-loading-orbit"></span><strong>Buscando en Modrinth</strong><small>Aplicando filtros y cargando proyectos.</small></div>';$('#modrinthStatus').classList.remove('is-error');$('#modrinthStatus').innerHTML='<i></i> Consultando Modrinth'}
+  try{
+    let data;
+    if(cached&&Date.now()-cached.time<300000)data=cached.data;
+    else{
+      const response=await fetch(`https://api.modrinth.com/v2/search?${params}`,{headers:{Accept:'application/json'},signal:modAbortController.signal});
+      if(!response.ok)throw new Error(`Modrinth respondió ${response.status}`);
+      data=await response.json();modrinthCache.set(cacheKey,{time:Date.now(),data});
+    }
+    if(searchId!==modRequestId)return;
+    modHits=append?[...modHits,...data.hits]:data.hits;
+    modTotal=data.total_hits;
+    $('#modrinthStatus').classList.remove('is-error');$('#modrinthStatus').innerHTML='<i></i> Catálogo conectado';
+    renderModResults();
+  }catch(error){
+    if(error.name==='AbortError'||searchId!==modRequestId)return;
+    $('#modrinthStatus').classList.add('is-error');$('#modrinthStatus').innerHTML='<i></i> Modrinth no responde';
+    if(!append)$('#modGrid').innerHTML='<div class="mods-empty mods-error"><span>↗</span><strong>No se pudo cargar Modrinth</strong><small>Comprueba tu conexión e inténtalo de nuevo.</small><button class="button button-outline" id="modRetry">Reintentar</button></div>';
+    $('#modResultCount').textContent='Catálogo no disponible';$('#modLoadMore').hidden=true;
+  }
+}
+function loadModrinthVersions() {
+  fetch('https://api.modrinth.com/v2/tag/game_version',{headers:{Accept:'application/json'}}).then(response=>{if(!response.ok)throw new Error('No se cargaron las versiones');return response.json()}).then(versions=>{
+    const select=$('#modVersionFilter');
+    const releases=versions.filter(item=>item.version_type==='release').sort((a,b)=>Date.parse(b.date)-Date.parse(a.date)).slice(0,45);
+    select.innerHTML='<option value="">Todas las versiones</option>'+releases.map(item=>`<option value="${escapeHTML(item.version)}">Minecraft ${escapeHTML(item.version)}</option>`).join('');
+  }).catch(()=>{});
+}
+function renderModrinth() {
+  if(!modrinthLoaded){modrinthLoaded=true;loadModrinthVersions();searchModrinth()}
+  else if(modView==='saved')renderModResults();
+}
+function setModView(view) {
+  modView=view;
+  $$('.mod-view-switch [data-mod-view]').forEach(button=>button.classList.toggle('is-active',button.dataset.modView===view));
+  $('#modSearch').disabled=view==='saved';
+  $('#modTypeFilter').disabled=view==='saved';$('#modLoaderFilter').disabled=view==='saved';$('#modVersionFilter').disabled=view==='saved';$('#modSort').disabled=view==='saved';
+  if(view==='catalog'&&!modHits.length)searchModrinth();else renderModResults();
+}
+function saveModrinthProject(projectId) {
+  const existing=savedMods.find(mod=>mod.project_id===projectId);
+  if(existing)savedMods=savedMods.filter(mod=>mod.project_id!==projectId);
+  else{
+    const project=[...modHits,...savedMods].find(mod=>mod.project_id===projectId);
+    if(!project)return;
+    savedMods.unshift(project);
+  }
+  localStorage.setItem('nexoraSavedMods',JSON.stringify(savedMods));
+  renderModResults();toast(existing?'Mod quitado de guardados':'Mod guardado');
 }
 
 function openDetails(id) {
@@ -420,7 +677,7 @@ applyPlayerProfile();
 document.addEventListener('click', event=>{
   const navigation=event.target.closest('[data-page]');
   if(navigation){navigate(navigation.dataset.page);return;}
-  if(event.target.closest('button') && !event.target.closest('[data-favorite],[data-copy],[data-detail],[data-open],[data-screenshot],#openPublish,#downloadNotice,#soundButton,#themeButton,#clearRecent,#clearActivity,#resetLocal,[type="submit"]')) playSound('tap');
+  if(event.target.closest('button') && !event.target.closest('[data-favorite],[data-copy],[data-detail],[data-open],[data-screenshot],[data-save-mod],#openPublish,#downloadNotice,#soundButton,#themeButton,#clearRecent,#resetLocal,[type="submit"]')) playSound('tap');
 });
 
 $('#openPublish').onclick=publish;
@@ -436,12 +693,6 @@ $$('[data-screenshot]').forEach(button=>button.addEventListener('click',()=>{
 $$('.screenshot-slot[data-image]').forEach(button=>{const image=new Image();image.onload=()=>{const frame=$('.slot-frame',button);image.className='slot-image';image.alt='';frame.append(image);frame.classList.add('has-image');button.dataset.loadedImage=image.src};image.src=button.dataset.image});
 $$('.creator-photo').forEach(image=>{const showPhoto=()=>image.parentElement.classList.add('has-photo');image.addEventListener('load',showPhoto,{once:true});image.addEventListener('error',()=>image.remove(),{once:true});if(image.complete&&image.naturalWidth)showPhoto()});
 $$('[data-coming]').forEach(link=>link.addEventListener('click',event=>{event.preventDefault();toast(`${link.dataset.coming}: enlace próximamente`)}));
-const revealTargets=$$('#page-home .landing-section,#page-home .feature-card,#page-home .screenshot-slot,#page-home .discover-card,#page-home .download-section,#page-home .team-card,#page-home .community-section');
-const motionReduced=localStorage.getItem('nexoraMotion')==='on'||matchMedia('(prefers-reduced-motion: reduce)').matches;
-if('IntersectionObserver' in window&&!motionReduced){
-  const revealObserver=new IntersectionObserver(entries=>entries.forEach(entry=>{if(entry.isIntersecting){entry.target.classList.add('reveal-in');revealObserver.unobserve(entry.target)}}),{threshold:.08,rootMargin:'0px 0px -6% 0px'});
-  revealTargets.forEach(target=>{target.classList.add('reveal-pending');revealObserver.observe(target)});
-}else revealTargets.forEach(target=>target.classList.add('reveal-in'));
 const heroImage=$('.cinema-image');
 const remoteHero=heroImage.dataset.fallbackSrc;
 heroImage.addEventListener('error',()=>{if(!heroImage.dataset.remoteFallback){heroImage.dataset.remoteFallback='true';heroImage.src=remoteHero}else{heroImage.style.display='none';$('.cinema-hero').classList.add('image-missing')}});
@@ -452,8 +703,17 @@ if(!matchMedia('(prefers-reduced-motion: reduce)').matches){
 ['search','versionFilter','modeFilter'].forEach(id=>$('#'+id).addEventListener(id==='search'?'input':'change',renderServers));
 $('#chips').addEventListener('click',event=>{const button=event.target.closest('[data-mode]');if(!button)return;modeChip=button.dataset.mode;$$('.chip',$('#chips')).forEach(chip=>chip.classList.toggle('active',chip===button));renderServers()});
 $('#platformToggle').addEventListener('click',event=>{const button=event.target.closest('[data-platform]');if(!button)return;platform=button.dataset.platform;$$('button',$('#platformToggle')).forEach(item=>item.classList.toggle('active',item===button));renderServers()});
-$('#clearRecent').onclick=()=>{recent=[];localStorage.removeItem('nexoraRecent');renderRecent();if(currentPage==='activity')renderActivity();toast('Historial limpiado')};
-$('#clearActivity').onclick=()=>{recent=[];localStorage.removeItem('nexoraRecent');renderRecent();renderActivity();toast('Historial limpiado')};
+$('#clearRecent').onclick=()=>{recent=[];localStorage.removeItem('nexoraRecent');renderRecent();toast('Historial limpiado')};
+$('#modSearch').addEventListener('input',()=>{clearTimeout(modSearchTimer);modSearchTimer=setTimeout(()=>searchModrinth(),320)});
+['modTypeFilter','modLoaderFilter','modVersionFilter','modSort'].forEach(id=>$('#'+id).addEventListener('change',()=>searchModrinth()));
+$('.mod-view-switch').addEventListener('click',event=>{const button=event.target.closest('[data-mod-view]');if(button)setModView(button.dataset.modView)});
+$('#modGrid').addEventListener('click',event=>{
+  const save=event.target.closest('[data-save-mod]');if(save){saveModrinthProject(save.dataset.saveMod);return}
+  if(event.target.closest('#modRetry'))searchModrinth();
+});
+$('#modLoadMore').onclick=()=>searchModrinth({append:true});
+$('#syncActivity').onclick=()=>{window.dispatchEvent(new CustomEvent('nexora:activity-request'));$('#activityConnectionStatus').innerHTML='<i></i> Buscando al launcher';clearTimeout(activitySearchTimer);activitySearchTimer=setTimeout(()=>{if(!activityConnected)renderPlayActivity()},4000);toast('Buscando conexión con NEXORA Launcher','tap')};
+$('#clearPlayActivity').onclick=()=>{playSessions=[];localStorage.removeItem('nexoraPlaySessions');renderPlayActivity();toast('Actividad de juego limpiada')};
 $('#soundButton').onclick=()=>setSound(!soundEnabled);
 $('#themeButton').onclick=()=>setTheme(!darkMode);
 $('#themeToggle').checked=darkMode;$('#themeToggle').onchange=event=>setTheme(event.target.checked);
@@ -517,8 +777,8 @@ $('#skinWorkbench').addEventListener('click',event=>{
   if(choice.dataset.weaponItem)playerEquipment.weapon=choice.dataset.weaponItem;
   localStorage.setItem('nexoraEquipment',JSON.stringify(playerEquipment));syncWorkbench();refreshSkinViewer();
 });
-$('#resetLocal').onclick=async()=>{for(const key of ['nexoraFavs','nexoraRecent','nexoraPendingServers','nexoraProfile','nexoraActiveSkin','nexoraSkinModel','nexoraEquipment'])localStorage.removeItem(key);favorites.clear();recent=[];playerProfile={...defaultPlayerProfile};activeSkinId='';playerModel='steve';playerEquipment={...defaultEquipment};await clearSavedSkins();applyPlayerProfile();renderRecent();renderServers();renderFavorites();renderActivity();renderProfile();toast('Datos locales borrados')};
-renderServers();renderFavorites();renderRecent();navigate('home',{silent:true});
+$('#resetLocal').onclick=async()=>{for(const key of ['nexoraFavs','nexoraRecent','nexoraPendingServers','nexoraProfile','nexoraActiveSkin','nexoraSkinModel','nexoraEquipment','nexoraSavedServers','nexoraLibraryProfiles','nexoraSelectedLibraryProfile','nexoraPlaySessions','nexoraSavedMods'])localStorage.removeItem(key);favorites.clear();recent=[];savedMods=[];playSessions=[];playerProfile={...defaultPlayerProfile};activeSkinId='';playerModel='steve';playerEquipment={...defaultEquipment};await clearSavedSkins();applyPlayerProfile();renderRecent();renderServers();renderFavorites();renderModResults();renderProfile();renderPlayActivity();toast('Datos locales borrados')};
+renderServers();renderFavorites();renderSavedModCount();renderPlayActivity();navigate('home',{silent:true});
 setTheme(darkMode,false);
 
 // Estela Glow del puntero: se activa solo en dispositivos con mouse y respeta movimiento reducido.

@@ -16,6 +16,11 @@ html[data-theme="dark"] .about-person-photo{border-color:rgba(255,255,255,.1)}ht
 #page-about .about-person-photo>i{top:14px;right:25px}
 #page-about .about-person-copy{max-width:490px;padding:0;text-align:center}
 #page-about .about-person-copy .eyebrow{justify-content:center;margin-bottom:7px}
+#page-about .about-person-copy .owner-label,.team-card-meta>.owner-label{display:inline-flex;align-self:flex-start;align-items:center;padding:5px 8px;border:1px solid rgba(176,57,49,.26);border-radius:999px;background:rgba(176,57,49,.075);color:#a63831;font:700 7px/1.2 var(--mono);letter-spacing:.09em}
+#page-about .about-person-copy .owner-label{align-self:center;margin-bottom:9px}
+#page-about .about-person-copy .owner-signature,.team-card-meta>.owner-signature{color:#9d7869;font:6px/1.7 var(--mono);letter-spacing:.08em}
+#page-about .about-person-copy .owner-signature{display:block;max-width:420px;margin:12px auto 0}
+.team-card-meta>.owner-signature{margin-top:8px}
 #page-about .about-person-copy h2{margin-bottom:9px;font-size:clamp(22px,2.2vw,29px)}
 #page-about .about-person-copy>p:not(.eyebrow){max-width:430px;font-size:10px;line-height:1.9}
 #page-about .person-signature{margin-top:12px;font-size:7px}
@@ -32,6 +37,8 @@ html[data-theme="dark"] .about-person-photo{border-color:rgba(255,255,255,.1)}ht
 .creator-photo{visibility:visible}
 .team-portrait.has-photo .photo-hint{opacity:0;transition:opacity .25s}.team-portrait.has-photo:hover .photo-hint{opacity:1}
 html[data-theme="dark"] #page-about .about-person-photo{border-color:rgba(255,255,255,.22);box-shadow:0 0 0 6px rgba(255,255,255,.035),0 0 30px rgba(216,169,137,.18),0 12px 30px rgba(0,0,0,.26)}
+html[data-theme="dark"] #page-about .about-person-copy .owner-label,html[data-theme="dark"] .team-card-meta>.owner-label{border-color:rgba(218,92,81,.35);background:rgba(177,54,47,.14);color:#ef8b80}
+html[data-theme="dark"] #page-about .about-person-copy .owner-signature,html[data-theme="dark"] .team-card-meta>.owner-signature{color:#c8a797}
 html[data-theme="dark"] .team-portrait{border-color:rgba(255,255,255,.22);box-shadow:0 0 0 5px rgba(255,255,255,.035),0 0 25px rgba(181,143,121,.14)}
 @media(max-width:780px){#page-about.active{min-height:calc(100vh - 54px)}#page-about .about-people{margin:25px 0 15px;gap:12px}#page-about .about-person{padding:20px 17px;gap:15px}#page-about .about-person-photo{width:clamp(132px,22vw,175px);height:clamp(132px,22vw,175px)}#page-about .about-person-copy>p:not(.eyebrow){font-size:9px}}
 @media(max-width:560px){#page-about.active{min-height:unset;padding-bottom:20px}#page-about .about-people{grid-template-columns:1fr;margin:12px 0;gap:10px}#page-about .about-person{min-height:340px;padding:20px 18px}#page-about .about-person-photo{width:148px;height:148px}#page-about .about-project-note{align-items:center;min-height:0;padding:13px}#page-about .about-project-note>p{font-size:12px}#page-about .about-project-note>small{width:auto;margin:0 0 0 auto}.team-grid{align-items:start}.team-portrait{width:min(122px,78%);margin-top:10px}}
