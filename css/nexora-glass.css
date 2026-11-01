@@ -911,3 +911,52 @@ html:not([data-theme="dark"]) .mod-search input::placeholder { color: #89766b; }
 @media (prefers-reduced-motion: reduce) {
   .mod-card, .mod-loading-orbit, .modrinth-status i { animation: none; }
 }
+
+/* Ficha de proyecto y descarga directa desde los archivos de Modrinth. */
+.mod-card { cursor: pointer; }
+.mod-card:focus-visible { outline: 2px solid rgba(221,190,171,.72); outline-offset: 3px; }
+.mod-details-link { padding: 0; border: 0; background: none; color: #e5cebc; font-size: 7px; white-space: nowrap; cursor: pointer; }
+.mod-details-link:hover { color: #fff6ed; }
+.modrinth-detail-modal .modal-head { position: sticky; z-index: 5; top: 0; background: rgba(39,30,27,.88); backdrop-filter: blur(18px); }
+.modrinth-detail-modal .modal-content { padding: 0; }
+.mod-detail-content { padding: 25px clamp(16px,4vw,36px) 30px; }
+.mod-detail-identity { display: flex; align-items: center; gap: 14px; }
+.mod-detail-identity>img { width: 58px; height: 58px; flex: 0 0 58px; border: 1px solid rgba(239,218,201,.17); border-radius: 13px; object-fit: cover; }
+.mod-detail-identity h3 { margin: 5px 0 4px; color: #f0e2d7; font-size: 23px; letter-spacing: -.04em; }
+.mod-detail-identity p { margin: 0; color: #aa9588; font-size: 9px; }
+.mod-detail-identity p.eyebrow { font: 7px var(--mono); letter-spacing: .1em; }
+.mod-detail-identity p strong { color: #ead8ca; font-weight: 600; }
+.mod-detail-summary { margin: 17px 0 12px; color: #c1aea1; font-size: 10px; line-height: 1.7; }
+.mod-detail-tags,.mod-version-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.mod-detail-tags>span,.mod-version-tags>span { padding: 5px 8px; border: 1px solid rgba(239,218,201,.12); border-radius: 99px; background: rgba(255,247,240,.035); color: #c9ae99; font: 7px var(--mono); }
+.mod-detail-stats { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; margin: 19px 0; }
+.mod-detail-stats>span { padding: 11px; border: 1px solid rgba(239,218,201,.1); border-radius: 8px; background: rgba(255,247,240,.025); color: #9f8a7e; font-size: 8px; }
+.mod-detail-stats strong { display: block; margin-bottom: 4px; color: #eadbd0; font: 12px var(--mono); }
+.mod-detail-section { margin-top: 18px; padding-top: 17px; border-top: 1px solid rgba(239,218,201,.1); }
+.mod-detail-section .eyebrow { margin: 0 0 10px; color: #b79d8c; font: 7px var(--mono); letter-spacing: .1em; }
+.mod-long-description { max-height: 240px; overflow: auto; color: #bdab9f; font-size: 9px; line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; }
+.mod-long-description p { margin: 0 0 10px; }
+.mod-long-description h4 { margin: 13px 0 7px; color: #eadbd0; font-size: 10px; font-weight: 600; }
+.mod-long-description ul { margin: 0 0 10px; padding-left: 18px; }
+.mod-download-section .profile-section-heading { margin: 0 0 12px; }
+.mod-download-section .profile-section-heading h3 { margin: 0; color: #eadbd0; font-size: 14px; }
+.mod-version-select-label { display: grid; gap: 6px; margin-bottom: 12px; color: #ad988a; font-size: 8px; }
+.mod-version-select-label .field { width: 100%; min-height: 38px; }
+.mod-version-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 9px; color: #b9a396; font: 7px var(--mono); }
+.mod-version-meta>span { padding: 4px 7px; border: 1px solid rgba(239,218,201,.1); border-radius: 5px; }
+.mod-download-button { display: inline-flex; gap: 9px; margin-top: 13px; text-decoration: none; }
+.mod-download-button>span { opacity: .72; font-size: 7px; }
+.mod-download-note,.mod-source-note { display: block; margin-top: 8px; color: #998579; font-size: 8px; line-height: 1.55; }
+.mod-source-note { margin-top: 13px; }
+.mod-version-unavailable { color: #b9a396; font-size: 9px; }
+.mod-official-link { display: inline-block; margin-top: 17px; color: #d8bda7; font-size: 8px; text-decoration: none; }
+.mod-official-link:hover { color: #fff6ed; }
+.mod-details-loading { display: grid; min-height: 240px; place-content: center; justify-items: center; gap: 12px; color: #c9b6a8; font-size: 10px; }
+html:not([data-theme="dark"]) .mod-detail-identity h3, html:not([data-theme="dark"]) .mod-detail-stats strong { color: #49372f; }
+html:not([data-theme="dark"]) .mod-detail-summary, html:not([data-theme="dark"]) .mod-long-description { color: #725f54; }
+@media (max-width: 520px) {
+  .mod-detail-content { padding: 18px 14px 23px; }
+  .mod-detail-stats { gap: 5px; }
+  .mod-detail-stats>span { padding: 8px 6px; font-size: 7px; }
+  .mod-detail-identity h3 { font-size: 19px; }
+}

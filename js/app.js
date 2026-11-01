@@ -334,8 +334,53 @@ function renderModCard(project,index) {
   const selectedVersion=$('#modVersionFilter')?.value;
   const versions=selectedVersion?[selectedVersion]:((project.versions||[]).slice(0,2));
   const versionTags=versions.map(version=>`<span class="mod-version-tag">${escapeHTML(version)}</span>`).join('');
-  const href=modProjectUrl(project);
-  return `<article class="mod-card" style="--mod-index:${index}"><div class="mod-card-heading"><span class="mod-card-icon">${icon}</span><div class="mod-card-title"><h2>${escapeHTML(project.title||'Mod sin título')}</h2><span>por ${escapeHTML(project.author||'Comunidad Modrinth')}</span></div><button class="mod-save-button ${saved?'is-saved':''}" data-save-mod="${escapeHTML(project.project_id)}" aria-label="${saved?'Quitar de':'Guardar en'} favoritos" title="${saved?'Quitar de guardados':'Guardar mod'}">${saved?'♥':'♡'}</button></div><p class="mod-card-description">${escapeHTML(project.description||'Sin descripción disponible.')}</p><div class="mod-card-tags">${categories}${versionTags}</div><div class="mod-card-footer"><span><b>↓</b> ${formatModCount(project.downloads)} descargas</span><a href="${escapeHTML(href)}" target="_blank" rel="noreferrer">Ver en Modrinth ↗</a></div></article>`;
+  return `<article class="mod-card" style="--mod-index:${index}" tabindex="0" role="group" data-mod-details="${escapeHTML(project.project_id)}" aria-label="Detalles de ${escapeHTML(project.title||'mod')}"><div class="mod-card-heading"><span class="mod-card-icon">${icon}</span><div class="mod-card-title"><h2>${escapeHTML(project.title||'Mod sin título')}</h2><span>por ${escapeHTML(project.author||'Comunidad Modrinth')}</span></div><button class="mod-save-button ${saved?'is-saved':''}" data-save-mod="${escapeHTML(project.project_id)}" aria-label="${saved?'Quitar de':'Guardar en'} favoritos" title="${saved?'Quitar de guardados':'Guardar mod'}">${saved?'♥':'♡'}</button></div><p class="mod-card-description">${escapeHTML(project.description||'Sin descripción disponible.')}</p><div class="mod-card-tags">${categories}${versionTags}</div><div class="mod-card-footer"><span><b>↓</b> ${formatModCount(project.downloads)} descargas</span><button class="mod-details-link" data-mod-details="${escapeHTML(project.project_id)}">Ver detalles y descargar ↗</button></div></article>`;
+}
+function modFileForVersion(version) {
+  if(!version?.files?.length)return null;
+  return version.files.find(file=>file.primary)||version.files[0];
+}
+function formatModrinthBody(markdown) {
+  return String(markdown||'').split(/\n\s*\n/).map(block=>{
+    const heading=block.match(/^#{1,4}\s+(.+)$/);
+    if(heading)return `<h4>${escapeHTML(heading[1])}</h4>`;
+    const lines=block.split('\n');
+    if(lines.every(line=>/^\s*[-*+]\s+/.test(line)))return `<ul>${lines.map(line=>`<li>${escapeHTML(line.replace(/^\s*[-*+]\s+/,''))}</li>`).join('')}</ul>`;
+    return `<p>${escapeHTML(block).replace(/\n/g,'<br>')}</p>`;
+  }).join('');
+}
+function renderModVersionDetails(version) {
+  const file=modFileForVersion(version);
+  const panel=$('#modVersionDetails');if(!panel)return;
+  if(!file){panel.innerHTML='<p class="mod-version-unavailable">Esta versión no tiene un archivo descargable disponible.</p>';return}
+  const size=file.size?`${(file.size/1024/1024).toFixed(1)} MB`:'';
+  const loaders=(version.loaders||[]).map(loader=>`<span>${escapeHTML(loader)}</span>`).join('');
+  const gameVersions=(version.game_versions||[]).map(gameVersion=>`<span>${escapeHTML(gameVersion)}</span>`).join('');
+  panel.innerHTML=`<div class="mod-version-meta"><span>${escapeHTML(version.version_number||version.name||'Versión')}</span><span>${escapeHTML(version.version_type||'release')}</span>${size?`<span>${size}</span>`:''}</div><div class="mod-version-tags">${loaders}${gameVersions}</div><a class="button button-light mod-download-button" href="${escapeHTML(file.url)}" download="${escapeHTML(file.filename)}" target="_blank" rel="noreferrer">↓ Descargar ${escapeHTML(file.filename)} <span>desde Modrinth</span></a><small class="mod-download-note">Archivo servido por Modrinth. Revisa la versión y el loader compatibles antes de instalarlo con tu launcher.</small>`;
+}
+async function openModDetails(projectId) {
+  const project=[...modHits,...savedMods].find(item=>item.project_id===projectId);
+  if(!project)return;
+  const modal=$('#overlay .modal');modal.classList.add('modrinth-detail-modal');$('#modalTitle').textContent=project.title||'Detalles del mod';
+  $('#modalContent').innerHTML='<div class="mod-details-loading"><span class="mod-loading-orbit"></span><strong>Cargando detalles y versiones…</strong></div>';
+  overlay.classList.add('open');document.body.classList.add('modal-open');playSound('open');$('#closeModal').focus();
+  try{
+    const [detailResponse,versionsResponse]=await Promise.all([
+      fetch(`https://api.modrinth.com/v2/project/${encodeURIComponent(projectId)}`,{headers:{Accept:'application/json'}}),
+      fetch(`https://api.modrinth.com/v2/project/${encodeURIComponent(projectId)}/version?include_changelog=false`,{headers:{Accept:'application/json'}})
+    ]);
+    if(!detailResponse.ok||!versionsResponse.ok)throw new Error('No se pudieron cargar los detalles');
+    const [detail,versions]=await Promise.all([detailResponse.json(),versionsResponse.json()]);
+    const listedVersions=versions.filter(version=>version.status==='listed');
+    const categories=[...(detail.categories||[]),...(detail.additional_categories||[])].slice(0,10).map(category=>`<span>${escapeHTML(category.replace(/_/g,' '))}</span>`).join('');
+    const author=project.author||'Autor en Modrinth';
+    const body=detail.body?`<section class="mod-detail-section"><p class="eyebrow">DESCRIPCIÓN Y USO</p><div class="mod-long-description">${formatModrinthBody(detail.body)}</div></section>`:'';
+    $('#modalContent').innerHTML=`<div class="mod-detail-content"><div class="mod-detail-identity">${detail.icon_url?`<img src="${escapeHTML(detail.icon_url)}" alt="" referrerpolicy="no-referrer">`:''}<div><p class="eyebrow">${escapeHTML((detail.project_type||'mod').toUpperCase())} · MODRINTH</p><h3>${escapeHTML(detail.title||project.title)}</h3><p>Creado por <strong>${escapeHTML(author)}</strong></p></div></div><p class="mod-detail-summary">${escapeHTML(detail.description||project.description||'')}</p><div class="mod-detail-tags">${categories}</div><div class="mod-detail-stats"><span><strong>${formatModCount(detail.downloads||project.downloads)}</strong> descargas</span><span><strong>${formatModCount(detail.followers||project.follows)}</strong> seguidores</span><span><strong>${listedVersions.length}</strong> versiones publicadas</span></div>${body}<section class="mod-detail-section mod-download-section"><div class="profile-section-heading"><div><p class="eyebrow">ARCHIVOS OFICIALES</p><h3>Elige una versión</h3></div></div>${listedVersions.length?`<label class="mod-version-select-label">Versión<select id="modDetailVersion" class="field">${listedVersions.map((version,index)=>`<option value="${index}">${escapeHTML(version.version_number||version.name)} · ${escapeHTML((version.game_versions||[]).slice(-2).join(', '))} · ${(version.loaders||[]).map(escapeHTML).join(', ')}</option>`).join('')}</select></label><div id="modVersionDetails"></div>`:'<p class="mod-version-unavailable">Modrinth no muestra versiones descargables para este proyecto.</p>'}<p class="mod-source-note">Créditos y licencia pertenecen a sus autores. Consulta la página oficial del proyecto para instrucciones completas y requisitos.</p></section><a class="mod-official-link" href="${escapeHTML(modProjectUrl(detail))}" target="_blank" rel="noreferrer">Ver página y licencia en Modrinth ↗</a></div>`;
+    if(listedVersions.length){renderModVersionDetails(listedVersions[0]);$('#modDetailVersion').addEventListener('change',event=>renderModVersionDetails(listedVersions[Number(event.target.value)]))}
+  }catch(error){
+    $('#modalContent').innerHTML='<div class="mods-empty mods-error"><strong>No se pudieron cargar los detalles</strong><small>Comprueba tu conexión e inténtalo de nuevo.</small><button class="button button-outline" id="modDetailRetry">Reintentar</button></div>';
+    $('#modDetailRetry').onclick=()=>openModDetails(projectId);
+  }
 }
 function renderModResults() {
   renderSavedModCount();
@@ -432,7 +477,7 @@ function openDetails(id) {
   overlay.classList.add('open'); document.body.classList.add('modal-open'); playSound('open'); $('#closeModal').focus();
 }
 
-function closeModal() { overlay.classList.remove('open'); $('#overlay .modal').classList.remove('server-profile-modal'); document.body.classList.remove('modal-open'); }
+function closeModal() { overlay.classList.remove('open'); $('#overlay .modal').classList.remove('server-profile-modal','modrinth-detail-modal'); document.body.classList.remove('modal-open'); }
 
 function publish() {
   $('#overlay .modal').classList.remove('server-profile-modal');
@@ -709,8 +754,10 @@ $('#modSearch').addEventListener('input',()=>{clearTimeout(modSearchTimer);modSe
 $('.mod-view-switch').addEventListener('click',event=>{const button=event.target.closest('[data-mod-view]');if(button)setModView(button.dataset.modView)});
 $('#modGrid').addEventListener('click',event=>{
   const save=event.target.closest('[data-save-mod]');if(save){saveModrinthProject(save.dataset.saveMod);return}
+  const details=event.target.closest('[data-mod-details]');if(details)openModDetails(details.dataset.modDetails);
   if(event.target.closest('#modRetry'))searchModrinth();
 });
+$('#modGrid').addEventListener('keydown',event=>{if((event.key==='Enter'||event.key===' ')&&event.target.matches('.mod-card[data-mod-details]')){event.preventDefault();openModDetails(event.target.dataset.modDetails)}});
 $('#modLoadMore').onclick=()=>searchModrinth({append:true});
 $('#syncActivity').onclick=()=>{window.dispatchEvent(new CustomEvent('nexora:activity-request'));$('#activityConnectionStatus').innerHTML='<i></i> Buscando al launcher';clearTimeout(activitySearchTimer);activitySearchTimer=setTimeout(()=>{if(!activityConnected)renderPlayActivity()},4000);toast('Buscando conexión con NEXORA Launcher','tap')};
 $('#clearPlayActivity').onclick=()=>{playSessions=[];localStorage.removeItem('nexoraPlaySessions');renderPlayActivity();toast('Actividad de juego limpiada')};
