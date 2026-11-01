@@ -1,0 +1,14 @@
+BANNERS DE NEXORA
+
+Agrega aquí tus imágenes de banner (PNG, JPG, WEBP o AVIF).
+Después escribe cada nombre de archivo en banners.json, por ejemplo:
+
+[
+  "banner.png",
+  "bosque.webp",
+  "atardecer.jpg"
+]
+
+La página mostrará un banner a la vez y cambiará cada pocos segundos.
+También puedes agregar videos MP4 a la lista: se reproducirán silenciados
+y pasarán al siguiente banner cuando terminen.

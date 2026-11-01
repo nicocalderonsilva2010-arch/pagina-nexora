@@ -26,10 +26,18 @@ let playSessions = normalizeActivitySessions(readList('nexoraPlaySessions'));
 let activityConnected = false;
 let activitySearchTimer;
 let currentPage = localStorage.getItem('nexoraPage') || 'home';
-let modeChip = '';
 let platform = '';
 let showFavorites = false;
 let soundEnabled = localStorage.getItem('nexoraSound') !== 'off';
+let musicTracks = [];
+let musicTrackIndex = 0;
+let musicGesturePending = false;
+let musicRequestedByUser = false;
+let bannerItems = [];
+let bannerItemIndex = 0;
+let bannerRotationTimer;
+let rotateHeroBanner = () => {};
+let selectHeroBanner = () => {};
 let darkMode = localStorage.getItem('nexoraTheme') === 'dark';
 const avatarPresets = {bruma:{mark:'✦',name:'Bruma'},bosque:{mark:'❖',name:'Bosque'},crepusculo:{mark:'☾',name:'Crepúsculo'},ender:{mark:'◉',name:'Ender'},nether:{mark:'◆',name:'Nether'},glaciar:{mark:'❄',name:'Glaciar'}};
 const defaultPlayerProfile = {name:'Nexora Player',avatar:'bruma'};
@@ -166,7 +174,7 @@ window.addEventListener('message',event=>{
 });
 window.setInterval(()=>{if(playSessions.some(session=>session.endedAt===null))renderPlayActivity()},60000);
 
-// Aparición progresiva al entrar en pantalla, sin animar continuamente el contenido.
+// Aparición reversible: oculta el contenido al salir y lo vuelve a mostrar al entrar.
 const revealSelector = [
   '#page-home .section-heading', '#page-home .vision-layout > *', '#page-home .vision-strip > *',
   '#page-home .feature-card', '#page-home .screenshot-slot', '#page-home .discover-card',
@@ -187,20 +195,21 @@ function stageVisibleContent(root=document) {
   const visiblePage = $('.page.active');
   if (!revealObserver && !reduced && 'IntersectionObserver' in window) {
     revealObserver = new IntersectionObserver(entries => entries.forEach(entry => {
-      if (!entry.isIntersecting) return;
-      entry.target.classList.add('is-revealed');
-      revealObserver.unobserve(entry.target);
+      entry.target.classList.toggle('is-revealed',entry.isIntersecting);
     }), { rootMargin: '0px 0px -7% 0px', threshold: 0.08 });
   }
   candidates.forEach((element, index) => {
-    if (element.dataset.revealReady) return;
-    element.dataset.revealReady = 'true';
+    if(!element.dataset.revealReady){
+      element.dataset.revealReady = 'true';
+      element.style.setProperty('--nx-reveal-delay', `${Math.min((index % 4) * 65, 195)}ms`);
+      element.classList.add('nx-reveal');
+    }
     if (reduced || !revealObserver || (visiblePage && !visiblePage.contains(element))) {
       element.classList.add('nx-reveal', 'is-revealed');
+      revealObserver?.unobserve(element);
       return;
     }
-    element.style.setProperty('--nx-reveal-delay', `${Math.min((index % 4) * 65, 195)}ms`);
-    element.classList.add('nx-reveal');
+    element.classList.remove('is-revealed');
     revealObserver.observe(element);
   });
 }
@@ -241,6 +250,7 @@ function toast(message, sound='success') {
 
 function navigate(page, options={}) {
   if (!$('#page-' + page)) return;
+  if(page==='home'&&currentPage!=='home')rotateHeroBanner();
   currentPage = page;
   localStorage.setItem('nexoraPage', page);
   if(skinViewerInstance)skinViewerInstance.renderPaused=page!=='profile';
@@ -260,12 +270,12 @@ function navigate(page, options={}) {
 function card(server, index=0) {
   const versionTags=server.versions.length?server.versions.map(value=>`<span class="tag tag-version">${value}</span>`).join(''):'<span class="tag tag-version">Versión por confirmar</span>';
   const platformTags=server.platforms.length?server.platforms.map(value=>`<span class="tag tag-platform">${value}</span>`).join(''):'<span class="tag tag-platform">Plataforma por confirmar</span>';
-  return `<article class="server-card ${server.style?`server-card--${server.style}`:''}" data-server-card="${server.id}" tabindex="0" aria-label="Abrir ficha de ${server.name}" style="--card-index:${index}">
+  return `<article class="server-card ${server.style?`server-card--${server.style}`:''}" data-server-card="${server.id}" tabindex="0" role="group" aria-label="Ficha de ${server.name}" style="--card-index:${index}">
     <div class="server-cover ${server.style?`server-cover--${server.style}`:''}" data-mark="${server.mark}">${server.logo?`<img class="server-logo" src="${server.logo}" alt="" loading="lazy">`:`<div class="server-symbol">${server.icon}</div>`}<span class="cover-caption">${server.kicker||'NEXORA · COMMUNITY'}</span><button class="favorite-button ${favorites.has(server.id)?'is-favorite':''}" data-favorite="${server.id}" aria-label="${favorites.has(server.id)?'Quitar de':'Añadir a'} favoritos">${favorites.has(server.id)?'♥':'♡'}</button></div>
-    <div class="server-card-body"><div class="server-title"><div><h3>${server.name}</h3><span>${server.region}</span></div><span class="status-label"><i></i> Sin verificar</span></div>
-      <button class="server-ip" data-copy="${server.id}" aria-label="Copiar ${server.ip}">⌁ &nbsp; ${server.ip}<span>Copiar</span></button>
+    <div class="server-card-body"><div class="server-title"><div><h3>${server.name}</h3><span>${server.region}</span></div></div>
+      <div class="server-ip-display"><span>IP</span><code>${server.ip}</code></div>
       <div class="tag-list">${server.modes.map(value=>`<span class="tag">${value}</span>`).join('')}${versionTags}${platformTags}</div>
-      <p class="server-description">${server.desc}</p><div class="server-card-footer"><span class="no-live-data">Jugadores: —</span><button class="detail-button" data-detail="${server.id}">Ver perfil <span>↗</span></button></div>
+      <p class="server-description">${server.desc}</p><div class="server-card-footer"><span class="no-live-data">Ficha del servidor</span><button class="detail-button" data-detail="${server.id}">Ver detalles <span>↗</span></button></div>
     </div></article>`;
 }
 
@@ -296,11 +306,10 @@ function renderServers() {
   const list = servers.filter(server => (!showFavorites || favorites.has(server.id)) &&
     (!query || `${server.name} ${server.ip} ${server.modes.join(' ')}`.toLowerCase().includes(query)) &&
     (!version || server.versions.includes(version)) && (!mode || matchesMode(server,mode)) &&
-    (!modeChip || matchesMode(server,modeChip)) && (!platform || server.platforms.includes(platform)));
+    (!platform || server.platforms.includes(platform)));
   $('#grid').innerHTML = list.length ? list.map(card).join('') : `<div class="empty-state"><span class="empty-icon">⌕</span><strong>${showFavorites?'Aún no tienes favoritos':'No encontramos coincidencias'}</strong><p>${showFavorites?'Guarda un servidor con el corazón y aparecerá en esta lista.':'Cambia algún filtro o prueba otra búsqueda.'}</p></div>`;
   $('#resultCount').textContent = `${String(list.length).padStart(2,'0')} RESULTADOS`;
   $('#serversHeading').textContent = showFavorites ? 'Tus servidores favoritos' : 'Servidores destacados';
-  $('#serverCount').textContent = String(servers.length).padStart(2,'0');
   bindCards($('#grid'));
 }
 
@@ -492,6 +501,100 @@ function setSound(enabled) {
   soundEnabled=enabled; localStorage.setItem('nexoraSound',enabled?'on':'off');
   $('#soundToggle').checked=enabled; $('#soundIcon').textContent=enabled?'♫':'♪'; $('#soundLabel').textContent=enabled?'Sonido':'Silencio';
   if(enabled) playSound('success');
+}
+
+function updateMusicButton(playing, blocked=musicGesturePending) {
+  const button=$('#musicButton');
+  button.classList.toggle('is-playing',playing);
+  button.classList.toggle('needs-gesture',!playing&&blocked);
+  button.setAttribute('aria-pressed',String(playing));
+  button.setAttribute('aria-label',playing?'Pausar música':blocked?'Toca para activar la música':'Reproducir música');
+  button.title=playing?'Pausar música':blocked?'El navegador requiere un toque para reproducir':'Reproducir música';
+  $('#musicIcon').textContent=playing?'Ⅱ':'♫';
+  $('#musicLabel').textContent=playing?'Pausar':blocked?'Activar':'Música';
+}
+
+async function startSiteMusic(fromUser=false) {
+  const audio=$('#siteMusic');
+  if(!musicTracks.length){if(fromUser)toast('Agrega una pista en la carpeta musica y anótala en playlist.json','tap');return}
+  if(!audio.src||audio.dataset.track!==musicTracks[musicTrackIndex]){
+    audio.dataset.track=musicTracks[musicTrackIndex];
+    audio.src=`./musica/${encodeURIComponent(audio.dataset.track)}`;
+    audio.load();
+  }
+  musicRequestedByUser=fromUser;
+  try{
+    await audio.play();
+    musicGesturePending=false;
+    updateMusicButton(true);
+    if(fromUser)localStorage.setItem('nexoraMusicPaused','off');
+  }catch(error){
+    musicGesturePending=error.name==='NotAllowedError';
+    updateMusicButton(false);
+    if(fromUser&&!musicGesturePending)toast('No se pudo cargar la pista. Revisa musica/playlist.json','tap');
+  }
+}
+
+async function loadSiteMusic() {
+  const fallbackTracks=['C418 - Sweden - Minecraft Volume Alpha.mp3'];
+  try{
+    const response=await fetch('./musica/playlist.json',{cache:'no-store'});
+    if(!response.ok)throw new Error('playlist no disponible');
+    const files=await response.json();
+    musicTracks=Array.isArray(files)?files.filter(file=>typeof file==='string'&&/^[\w .()-]+\.(mp3|ogg|wav|m4a|aac)$/i.test(file)):fallbackTracks;
+  }catch{musicTracks=fallbackTracks}
+  if(!musicTracks.length)musicTracks=fallbackTracks;
+  const audio=$('#siteMusic');audio.volume=.28;audio.addEventListener('ended',()=>{
+    if(!musicTracks.length)return;
+    musicTrackIndex=(musicTrackIndex+1)%musicTracks.length;
+    audio.dataset.track='';startSiteMusic(false);
+  });
+  audio.addEventListener('error',()=>{
+    updateMusicButton(false);musicGesturePending=false;
+    if(musicTracks.length>1&&musicTrackIndex<musicTracks.length-1){musicTrackIndex++;audio.dataset.track='';startSiteMusic(false)}
+    else if(musicRequestedByUser){musicRequestedByUser=false;toast('No se encuentra el audio indicado en musica/playlist.json','tap')}
+  });
+  updateMusicButton(false);
+  if(localStorage.getItem('nexoraMusicPaused')!=='on')startSiteMusic(false);
+}
+
+function resumeMusicAfterGesture(event) {
+  if(event?.target?.closest?.('#musicButton'))return;
+  if(musicGesturePending&&localStorage.getItem('nexoraMusicPaused')!=='on')startSiteMusic(false);
+}
+
+async function loadHeroBanners() {
+  const heroImage=$('.cinema-image');
+  const heroVideo=$('.cinema-video');
+  // Respaldo para aperturas file://, donde fetch() no puede leer banners.json.
+  const fallback=['banner.png','banner2.jpg','banener3.jpg'];
+  try{
+    const response=await fetch('./imagenes/banner/banners.json',{cache:'no-store'});
+    if(!response.ok)throw new Error('banners no disponibles');
+    const files=await response.json();
+    bannerItems=Array.isArray(files)?files.filter(file=>typeof file==='string'&&/^[\w.-]+\.(png|jpe?g|webp|avif|mp4|webm)$/i.test(file)):fallback;
+  }catch{bannerItems=fallback}
+  if(!bannerItems.length)bannerItems=fallback;
+  const advance=()=>{clearTimeout(bannerRotationTimer);if(bannerItems.length>1)bannerItemIndex=(bannerItemIndex+1)%bannerItems.length;showHeroBanner()};
+  rotateHeroBanner=advance;
+  selectHeroBanner=index=>{if(!Number.isInteger(index)||index<0||index>=bannerItems.length)return;clearTimeout(bannerRotationTimer);bannerItemIndex=index;showHeroBanner()};
+  function renderBannerDots(){
+    const dots=$('#bannerDots');
+    dots.innerHTML=bannerItems.length>1?bannerItems.map((file,index)=>`<button type="button" class="banner-dot ${index===bannerItemIndex?'is-active':''}" data-banner-index="${index}" aria-label="Mostrar banner ${index+1}: ${escapeHTML(file.replace(/\.[^.]+$/,''))}" aria-current="${index===bannerItemIndex?'true':'false'}"></button>`).join(''):'';
+  }
+  function showHeroBanner(){
+    renderBannerDots();
+    const file=bannerItems[bannerItemIndex];
+    const url=`./imagenes/banner/${encodeURIComponent(file)}`;
+    if(/\.(mp4|webm)$/i.test(file)){
+      clearTimeout(bannerRotationTimer);heroImage.style.display='none';heroVideo.style.display='block';heroVideo.loop=true;heroVideo.onended=null;heroVideo.onerror=advance;
+      heroVideo.classList.remove('banner-transition');heroVideo.src=url;heroVideo.load();heroVideo.play().then(()=>{heroVideo.classList.add('banner-transition');if(bannerItems.length>1)bannerRotationTimer=setTimeout(advance,8000)}).catch(advance);return;
+    }
+    clearTimeout(bannerRotationTimer);heroVideo.pause();heroVideo.loop=false;heroVideo.onended=null;heroVideo.onerror=null;heroVideo.classList.remove('banner-transition');heroVideo.removeAttribute('src');heroVideo.load();heroVideo.style.display='none';heroImage.style.display='block';heroImage.classList.remove('banner-transition');heroImage.style.opacity='0';
+    heroImage.onload=()=>requestAnimationFrame(()=>{heroImage.classList.add('banner-transition');heroImage.style.opacity='1';if(bannerItems.length>1)bannerRotationTimer=setTimeout(advance,8000)});heroImage.onerror=advance;heroImage.src=url;
+  }
+  $('#bannerDots').addEventListener('click',event=>{const dot=event.target.closest('[data-banner-index]');if(dot)selectHeroBanner(Number(dot.dataset.bannerIndex))});
+  showHeroBanner();
 }
 
 function setTheme(enabled, announce=true) {
@@ -722,7 +825,7 @@ applyPlayerProfile();
 document.addEventListener('click', event=>{
   const navigation=event.target.closest('[data-page]');
   if(navigation){navigate(navigation.dataset.page);return;}
-  if(event.target.closest('button') && !event.target.closest('[data-favorite],[data-copy],[data-detail],[data-open],[data-screenshot],[data-save-mod],#openPublish,#downloadNotice,#soundButton,#themeButton,#clearRecent,#resetLocal,[type="submit"]')) playSound('tap');
+  if(event.target.closest('button') && !event.target.closest('[data-favorite],[data-copy],[data-detail],[data-open],[data-screenshot],[data-save-mod],#openPublish,#downloadNotice,#soundButton,#musicButton,#themeButton,#clearRecent,#resetLocal,[type="submit"]')) playSound('tap');
 });
 
 $('#openPublish').onclick=publish;
@@ -739,14 +842,11 @@ $$('.screenshot-slot[data-image]').forEach(button=>{const image=new Image();imag
 $$('.creator-photo').forEach(image=>{const showPhoto=()=>image.parentElement.classList.add('has-photo');image.addEventListener('load',showPhoto,{once:true});image.addEventListener('error',()=>image.remove(),{once:true});if(image.complete&&image.naturalWidth)showPhoto()});
 $$('[data-coming]').forEach(link=>link.addEventListener('click',event=>{event.preventDefault();toast(`${link.dataset.coming}: enlace próximamente`)}));
 const heroImage=$('.cinema-image');
-const remoteHero=heroImage.dataset.fallbackSrc;
-heroImage.addEventListener('error',()=>{if(!heroImage.dataset.remoteFallback){heroImage.dataset.remoteFallback='true';heroImage.src=remoteHero}else{heroImage.style.display='none';$('.cinema-hero').classList.add('image-missing')}});
 if(!matchMedia('(prefers-reduced-motion: reduce)').matches){
   let heroFrame=0;
   window.addEventListener('scroll',()=>{if(heroFrame)return;heroFrame=requestAnimationFrame(()=>{const amount=Math.min(window.scrollY,420)*.035;heroImage.style.transform=`translate3d(0,${amount}px,0) scale(1.035)`;heroFrame=0})},{passive:true});
 }
 ['search','versionFilter','modeFilter'].forEach(id=>$('#'+id).addEventListener(id==='search'?'input':'change',renderServers));
-$('#chips').addEventListener('click',event=>{const button=event.target.closest('[data-mode]');if(!button)return;modeChip=button.dataset.mode;$$('.chip',$('#chips')).forEach(chip=>chip.classList.toggle('active',chip===button));renderServers()});
 $('#platformToggle').addEventListener('click',event=>{const button=event.target.closest('[data-platform]');if(!button)return;platform=button.dataset.platform;$$('button',$('#platformToggle')).forEach(item=>item.classList.toggle('active',item===button));renderServers()});
 $('#clearRecent').onclick=()=>{recent=[];localStorage.removeItem('nexoraRecent');renderRecent();toast('Historial limpiado')};
 $('#modSearch').addEventListener('input',()=>{clearTimeout(modSearchTimer);modSearchTimer=setTimeout(()=>searchModrinth(),320)});
@@ -762,6 +862,15 @@ $('#modLoadMore').onclick=()=>searchModrinth({append:true});
 $('#syncActivity').onclick=()=>{window.dispatchEvent(new CustomEvent('nexora:activity-request'));$('#activityConnectionStatus').innerHTML='<i></i> Buscando al launcher';clearTimeout(activitySearchTimer);activitySearchTimer=setTimeout(()=>{if(!activityConnected)renderPlayActivity()},4000);toast('Buscando conexión con NEXORA Launcher','tap')};
 $('#clearPlayActivity').onclick=()=>{playSessions=[];localStorage.removeItem('nexoraPlaySessions');renderPlayActivity();toast('Actividad de juego limpiada')};
 $('#soundButton').onclick=()=>setSound(!soundEnabled);
+$('#musicButton').onclick=()=>{
+  const audio=$('#siteMusic');
+  if(!audio.paused){audio.pause();musicGesturePending=false;musicRequestedByUser=false;localStorage.setItem('nexoraMusicPaused','on');updateMusicButton(false)}
+  else startSiteMusic(true);
+};
+document.addEventListener('pointerdown',resumeMusicAfterGesture,{passive:true});
+document.addEventListener('keydown',resumeMusicAfterGesture);
+loadSiteMusic();
+loadHeroBanners();
 $('#themeButton').onclick=()=>setTheme(!darkMode);
 $('#themeToggle').checked=darkMode;$('#themeToggle').onchange=event=>setTheme(event.target.checked);
 $('#soundToggle').checked=soundEnabled;$('#soundToggle').onchange=event=>setSound(event.target.checked);

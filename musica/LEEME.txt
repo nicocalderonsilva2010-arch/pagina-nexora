@@ -1,0 +1,9 @@
+MUSICA DE NEXORA
+
+1. Coloca aquí tus archivos de audio (MP3, OGG o WAV).
+2. Abre playlist.json y escribe los nombres de archivo en la lista.
+3. La página probará la reproducción automática. Si el navegador la bloquea,
+   pulsa el botón Música de la barra superior.
+
+La música se reproduce en bucle y el botón permite pausarla o reanudarla.
+Usa música propia o con permiso para publicarla en tu página.

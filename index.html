@@ -20,7 +20,7 @@
   <link rel="stylesheet" href="css/nexora-pages.css">
   <link rel="stylesheet" href="css/nexora-profile.css">
   <link rel="stylesheet" href="css/nexora-responsive.css">
-  <link rel="stylesheet" href="css/nexora-glass.css?v=16">
+  <link rel="stylesheet" href="css/nexora-glass.css?v=21">
 </head>
 <body>
   <div class="ambient ambient-one"></div><div class="ambient ambient-two"></div>
@@ -53,15 +53,15 @@
           <button class="nav-button active" data-page="home">Inicio</button><button class="nav-button" data-page="library">Actividad</button><button class="nav-button" data-page="servers">Servidores</button><button class="nav-button" data-page="activity">Mods</button><button class="nav-button" data-page="about">Nosotros</button><button class="nav-button" data-page="favorites">Favoritos</button><button class="nav-button" data-page="settings">Ajustes</button>
         </nav>
         <div class="breadcrumb" aria-live="polite"><span id="crumbCurrent">Inicio</span></div>
-        <div class="topbar-actions"><span class="build-label"><i></i> VERSIÓN 0.18 BETA</span><button class="sound-button theme-button" id="themeButton" title="Cambiar tema"><span id="themeIcon">☾</span><span id="themeLabel">Oscuro</span></button><button class="sound-button" id="soundButton" title="Activar o silenciar sonidos"><span id="soundIcon">♫</span><span id="soundLabel">Sonido</span></button><button class="avatar avatar-small" data-profile-avatar data-page="profile" aria-label="Abrir perfil">✦</button></div>
+        <div class="topbar-actions"><span class="build-label"><i></i> VERSIÓN 0.18 BETA</span><button class="sound-button theme-button" id="themeButton" title="Cambiar tema"><span id="themeIcon">☾</span><span id="themeLabel">Oscuro</span></button><button class="sound-button" id="soundButton" title="Activar o silenciar sonidos"><span id="soundIcon">♫</span><span id="soundLabel">Sonido</span></button><button class="sound-button music-button" id="musicButton" title="Reproducir música" aria-label="Reproducir música" aria-pressed="false"><span id="musicIcon">♫</span><span id="musicLabel">Música</span></button><button class="avatar avatar-small" data-profile-avatar data-page="profile" aria-label="Abrir perfil">✦</button></div>
       </header>
 
       <section class="page active" id="page-home" data-title="Inicio">
         <section class="cinema-hero" id="top">
-          <video class="cinema-video" autoplay muted loop playsinline preload="metadata" poster="./imagenes/banner/banner.png" aria-hidden="true"><source src="./imagenes/banner/banner.mp4" type="video/mp4"></video><img class="cinema-image" src="./imagenes/banner/banner.png?v=2" data-fallback-src="https://upload.wikimedia.org/wikipedia/commons/a/a0/Bluemap-screenshot_%281%29.png" alt="Paisaje de Minecraft al atardecer con bosque y luz cálida" fetchpriority="high">
+          <video class="cinema-video" muted playsinline preload="none" poster="./imagenes/banner/banner.png" aria-hidden="true"></video><img class="cinema-image" src="./imagenes/banner/banner.png?v=2" alt="Paisaje de Minecraft al atardecer con bosque y luz cálida" fetchpriority="high">
           <div class="cinema-shade"></div><div class="cinema-grain"></div><div class="hero-motes" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="hero-voxel voxel-one" aria-hidden="true"></div><div class="hero-voxel voxel-two" aria-hidden="true"></div><div class="hero-voxel voxel-three" aria-hidden="true"></div>
           <div class="cinema-copy"><img class="hero-logo" src="./imagenes/logo/logo.png" alt="Logo de NEXORA" onerror="this.remove()"><span class="hero-emblem" aria-hidden="true">✦</span><span class="cinema-overline"><i></i> YOUR WORLD, YOUR WAY</span><h1>NEXORA</h1><p class="cinema-subtitle">NEXORA LAUNCHER <span>V0.18 BETA</span></p><p class="cinema-description">El inicio de algo más grande.<br>Juega. Descubre. Pertenece.</p><div class="hero-actions"><a class="download-button" href="#downloads"><span class="download-icon">↓</span><span>DOWNLOAD</span><span class="download-platform">WINDOWS · V0.18 BETA</span></a><a class="store-button" href="#discover"><span>✦</span> EXPLORAR</a></div></div>
-          <div class="cinema-bottom"><span>CREA TU PROPIA HISTORIA</span><a href="https://commons.wikimedia.org/wiki/File:Bluemap-screenshot_(1).png" target="_blank" rel="noreferrer">Mundo de Minecraft · CC0</a><a href="#vision" class="scroll-cue">SCROLL TO EXPLORE <span>↓</span></a></div>
+          <div class="banner-dots" id="bannerDots" aria-label="Elegir banner"></div><div class="cinema-bottom"><span>CREA TU PROPIA HISTORIA</span><a href="https://commons.wikimedia.org/wiki/File:Bluemap-screenshot_(1).png" target="_blank" rel="noreferrer">Mundo de Minecraft · CC0</a><a href="#vision" class="scroll-cue">SCROLL TO EXPLORE <span>↓</span></a></div>
           <div class="cinema-coordinate">NEXORA NETWORK <span>·</span> 001</div>
         </section>
 
@@ -81,10 +81,10 @@
       </section>
 
       <section class="page" id="page-servers" data-title="Servidores">
-        <div class="page-heading"><div><p class="eyebrow"><span class="eyebrow-line"></span> MINECRAFT · DISCOVER</p><h1>Encuentra tu próximo <span>mundo.</span></h1><p class="lede">Comunidades nuevas, aventuras infinitas.</p></div><button class="button button-dark" id="openPublish">＋ &nbsp; Publicar servidor</button></div>
-        <section class="directory-banner glass-card"><div><span class="hero-kicker">✦ &nbsp; DIRECTORIO DE MUESTRA</span><h2>¿A dónde te lleva<br>la próxima aventura?</h2><p>Perfiles de demostración. Los estados en vivo se conectarán más adelante.</p></div><div class="banner-counter"><strong id="serverCount">06</strong><span>COMUNIDADES<br>PARA EXPLORAR</span></div><div class="banner-orb" aria-hidden="true">✦</div></section>
+        <div class="page-heading"><div><p class="eyebrow"><span class="eyebrow-line"></span> NEXORA · SERVIDORES</p><h1>Encuentra tu próximo <span>mundo.</span></h1><p class="lede">Comunidades nuevas, aventuras infinitas.</p></div><button class="button button-dark" id="openPublish">＋ &nbsp; Proponer servidor</button></div>
+        
         <section class="filters"><label class="search"><span>⌕</span><input id="search" placeholder="Busca por nombre, IP o modalidad…" autocomplete="off" aria-label="Buscar servidores"></label><select class="filter-select" id="versionFilter" aria-label="Filtrar por versión"><option value="">Todas las versiones</option><option>1.21</option><option>1.20</option><option>1.19</option><option>1.18</option><option>1.16</option><option>1.8</option></select><select class="filter-select" id="modeFilter" aria-label="Filtrar por modalidad"><option value="">Todas las modalidades</option><option>Survival</option><option>Skyblock</option><option>PvP</option><option>Factions</option><option>Lifesteal</option><option>Anarquía</option></select><div class="toggle" id="platformToggle" aria-label="Filtrar por plataforma"><button class="active" data-platform="">Todas</button><button data-platform="Java">Java</button><button data-platform="Bedrock">Bedrock</button></div></section>
-        <div class="filter-row"><div><span class="section-title" id="serversHeading">Servidores destacados</span><span class="count" id="resultCount">06 RESULTADOS</span></div><div class="chips" id="chips"><button class="chip active" data-mode="">Todos</button><button class="chip" data-mode="Survival">Survival</button><button class="chip" data-mode="PvP">PvP</button><button class="chip" data-mode="Skyblock">Skyblock</button><button class="chip" data-mode="Factions">Factions</button><button class="chip" data-mode="Lifesteal">Lifesteal</button><button class="chip" data-mode="Anarquía">Anarquía</button></div></div>
+        <div class="filter-row"><div><span class="section-title" id="serversHeading">Servidores destacados</span><span class="count" id="resultCount">07 SERVIDORES</span></div></div>
         <section class="grid" id="grid"></section><div class="subhead" id="recentSection"><h3>Visitados recientemente <span class="count">TU HISTORIAL</span></h3><button class="see-all" id="clearRecent">Limpiar historial</button></div><div id="recentList" class="recent-box"><span>Aún no has abierto ningún servidor.</span><span>Los que visites aparecerán aquí ↗</span></div><p class="footnote">Los datos de jugadores y estado se mostrarán cuando NEXORA conecte una API. No se inventan cifras ni estados de conexión.</p>
       </section>
 
@@ -118,8 +118,9 @@
     </main>
   </div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <audio id="siteMusic" preload="none"></audio>
   <div class="overlay" id="overlay"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><div class="modal-head"><div><p class="eyebrow">NEXORA · COMMUNITY</p><h2 id="modalTitle">Detalles del servidor</h2></div><button class="x" id="closeModal" aria-label="Cerrar">✕</button></div><div class="modal-content" id="modalContent"></div></div></div>
   <script src="https://cdn.jsdelivr.net/npm/skinview3d@3.4.2/bundles/skinview3d.bundle.js" defer></script>
-  <script src="js/app.js?v=5" defer></script>
+  <script src="js/app.js?v=13" defer></script>
 </body>
 </html>
