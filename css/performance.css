@@ -1,0 +1,7 @@
+/* Deja al navegador saltarse el cálculo de secciones lejanas hasta acercarse a ellas. */
+#page-home > .landing-section,
+#page-home > .download-section,
+#page-home > .community-section {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 720px;
+}

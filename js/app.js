@@ -11,7 +11,6 @@ const servers = [
 const $ = (selector, scope=document) => scope.querySelector(selector);
 const $$ = (selector, scope=document) => [...scope.querySelectorAll(selector)];
 const readList = key => { try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch { return []; } };
-let favorites = new Set(readList('nexoraFavs'));
 let recent = readList('nexoraRecent').filter(id => servers.some(server => server.id === id));
 let savedMods = readList('nexoraSavedMods').filter(mod => mod && typeof mod.project_id === 'string');
 let modView = 'catalog';
@@ -27,12 +26,12 @@ let activityConnected = false;
 let activitySearchTimer;
 let currentPage = localStorage.getItem('nexoraPage') || 'home';
 let platform = '';
-let showFavorites = false;
 let soundEnabled = localStorage.getItem('nexoraSound') !== 'off';
 let musicTracks = [];
 let musicTrackIndex = 0;
 let musicGesturePending = false;
 let musicRequestedByUser = false;
+let musicManuallyPaused = false;
 let bannerItems = [];
 let bannerItemIndex = 0;
 let bannerRotationTimer;
@@ -46,10 +45,11 @@ if(!avatarPresets[playerProfile.avatar])playerProfile.avatar=defaultPlayerProfil
 let activeSkinId = localStorage.getItem('nexoraActiveSkin') || '';
 let playerModel = localStorage.getItem('nexoraSkinModel') || 'steve';
 if(!['steve','alex'].includes(playerModel))playerModel='steve';
-const defaultEquipment={back:'none',armor:'none',weapon:'none'};
+const defaultEquipment={back:'none',armor:'none',trim:'none',weapon:'none'};
 let playerEquipment=(()=>{try{return {...defaultEquipment,...JSON.parse(localStorage.getItem('nexoraEquipment')||'{}')}}catch{return {...defaultEquipment}}})();
 if(!['none','cape','elytra'].includes(playerEquipment.back))playerEquipment.back='none';
 if(!['none','leather','iron','diamond'].includes(playerEquipment.armor))playerEquipment.armor='none';
+if(!['none','coast','dune','sentry','vex','ward'].includes(playerEquipment.trim))playerEquipment.trim='none';
 if(!['none','sword','axe'].includes(playerEquipment.weapon))playerEquipment.weapon='none';
 let skinDatabasePromise;
 let skinObjectUrls = [];
@@ -248,8 +248,16 @@ function toast(message, sound='success') {
   playSound(sound);
 }
 
+function closeToolsMenu() {
+  const menu=$('#toolsMenu');
+  const toggle=$('[data-tools-toggle]');
+  if(menu)menu.hidden=true;
+  if(toggle)toggle.setAttribute('aria-expanded','false');
+}
+
 function navigate(page, options={}) {
   if (!$('#page-' + page)) return;
+  closeToolsMenu();
   if(page==='home'&&currentPage!=='home')rotateHeroBanner();
   currentPage = page;
   localStorage.setItem('nexoraPage', page);
@@ -259,7 +267,6 @@ function navigate(page, options={}) {
   $$('.nav-button').forEach(button => button.classList.toggle('active', button.dataset.page === page));
   $('#crumbCurrent').textContent = $('#page-' + page).dataset.title;
   document.title = `NEXORA — ${$('#page-' + page).dataset.title}`;
-  if (page === 'favorites') renderFavorites();
   if (page === 'activity') renderModrinth();
   if (page === 'library') renderPlayActivity();
   if (page === 'profile') renderProfile();
@@ -271,7 +278,7 @@ function card(server, index=0) {
   const versionTags=server.versions.length?server.versions.map(value=>`<span class="tag tag-version">${value}</span>`).join(''):'<span class="tag tag-version">Versión por confirmar</span>';
   const platformTags=server.platforms.length?server.platforms.map(value=>`<span class="tag tag-platform">${value}</span>`).join(''):'<span class="tag tag-platform">Plataforma por confirmar</span>';
   return `<article class="server-card ${server.style?`server-card--${server.style}`:''}" data-server-card="${server.id}" tabindex="0" role="group" aria-label="Ficha de ${server.name}" style="--card-index:${index}">
-    <div class="server-cover ${server.style?`server-cover--${server.style}`:''}" data-mark="${server.mark}">${server.logo?`<img class="server-logo" src="${server.logo}" alt="" loading="lazy">`:`<div class="server-symbol">${server.icon}</div>`}<span class="cover-caption">${server.kicker||'NEXORA · COMMUNITY'}</span><button class="favorite-button ${favorites.has(server.id)?'is-favorite':''}" data-favorite="${server.id}" aria-label="${favorites.has(server.id)?'Quitar de':'Añadir a'} favoritos">${favorites.has(server.id)?'♥':'♡'}</button></div>
+    <div class="server-cover ${server.style?`server-cover--${server.style}`:''}" data-mark="${server.mark}">${server.logo?`<img class="server-logo" src="${server.logo}" alt="" loading="lazy">`:`<div class="server-symbol">${server.icon}</div>`}<span class="cover-caption">${server.kicker||'NEXORA · COMMUNITY'}</span></div>
     <div class="server-card-body"><div class="server-title"><div><h3>${server.name}</h3><span>${server.region}</span></div></div>
       <div class="server-ip-display"><span>IP</span><code>${server.ip}</code></div>
       <div class="tag-list">${server.modes.map(value=>`<span class="tag">${value}</span>`).join('')}${versionTags}${platformTags}</div>
@@ -281,14 +288,8 @@ function card(server, index=0) {
 
 function bindCards(container) {
   $$('[data-server-card]', container).forEach(card=>{
-    card.onclick=event=>{if(event.target.closest('button,a,input,select,textarea,[data-favorite],[data-copy],[data-detail]'))return;openDetails(card.dataset.serverCard)};
+    card.onclick=event=>{if(event.target.closest('button,a,input,select,textarea,[data-copy],[data-detail]'))return;openDetails(card.dataset.serverCard)};
     card.onkeydown=event=>{if((event.key==='Enter'||event.key===' ')&&event.target===card){event.preventDefault();openDetails(card.dataset.serverCard)}};
-  });
-  $$('[data-favorite]', container).forEach(button => button.onclick = event => {
-    event.stopPropagation(); const id = button.dataset.favorite;
-    favorites.has(id) ? favorites.delete(id) : favorites.add(id);
-    localStorage.setItem('nexoraFavs', JSON.stringify([...favorites]));
-    playSound('tap'); renderServers(); renderFavorites();
   });
   $$('[data-copy]', container).forEach(button => button.onclick = async () => {
     const server = servers.find(item => item.id === button.dataset.copy);
@@ -303,20 +304,13 @@ function renderServers() {
   const version = $('#versionFilter')?.value || '';
   const mode = $('#modeFilter')?.value || '';
   const matchesMode=(server,filter)=>server.modes.some(value=>value.toLowerCase()===filter.toLowerCase()||value.toLowerCase().startsWith(filter.toLowerCase()+' '));
-  const list = servers.filter(server => (!showFavorites || favorites.has(server.id)) &&
-    (!query || `${server.name} ${server.ip} ${server.modes.join(' ')}`.toLowerCase().includes(query)) &&
+  const list = servers.filter(server => (!query || `${server.name} ${server.ip} ${server.modes.join(' ')}`.toLowerCase().includes(query)) &&
     (!version || server.versions.includes(version)) && (!mode || matchesMode(server,mode)) &&
     (!platform || server.platforms.includes(platform)));
-  $('#grid').innerHTML = list.length ? list.map(card).join('') : `<div class="empty-state"><span class="empty-icon">⌕</span><strong>${showFavorites?'Aún no tienes favoritos':'No encontramos coincidencias'}</strong><p>${showFavorites?'Guarda un servidor con el corazón y aparecerá en esta lista.':'Cambia algún filtro o prueba otra búsqueda.'}</p></div>`;
+  $('#grid').innerHTML = list.length ? list.map(card).join('') : `<div class="empty-state"><span class="empty-icon">⌕</span><strong>No encontramos coincidencias</strong><p>Cambia algún filtro o prueba otra búsqueda.</p></div>`;
   $('#resultCount').textContent = `${String(list.length).padStart(2,'0')} RESULTADOS`;
-  $('#serversHeading').textContent = showFavorites ? 'Tus servidores favoritos' : 'Servidores destacados';
+  $('#serversHeading').textContent = 'Servidores destacados';
   bindCards($('#grid'));
-}
-
-function renderFavorites() {
-  const list = servers.filter(server => favorites.has(server.id));
-  $('#favoritesGrid').innerHTML = list.length ? list.map(card).join('') : `<div class="empty-state"><span class="empty-icon">♡</span><strong>Este espacio es tuyo</strong><p>Toca el corazón de una tarjeta para guardar aquí un servidor que quieras visitar.</p><button class="button button-dark" data-page="servers">Explorar servidores <span>↗</span></button></div>`;
-  bindCards($('#favoritesGrid'));
 }
 
 function pushRecent(id) {
@@ -486,7 +480,7 @@ function openDetails(id) {
   overlay.classList.add('open'); document.body.classList.add('modal-open'); playSound('open'); $('#closeModal').focus();
 }
 
-function closeModal() { overlay.classList.remove('open'); $('#overlay .modal').classList.remove('server-profile-modal','modrinth-detail-modal'); document.body.classList.remove('modal-open'); }
+function closeModal() { overlay.classList.remove('open'); $('#overlay .modal').classList.remove('server-profile-modal','modrinth-detail-modal','creative-tool-modal'); document.body.classList.remove('modal-open'); }
 
 function publish() {
   $('#overlay .modal').classList.remove('server-profile-modal');
@@ -537,6 +531,9 @@ async function startSiteMusic(fromUser=false) {
 
 async function loadSiteMusic() {
   const fallbackTracks=['C418 - Sweden - Minecraft Volume Alpha.mp3'];
+  // Deja disponible la pista local desde el primer instante: el usuario puede
+  // tocar antes de que termine de cargarse playlist.json.
+  musicTracks=fallbackTracks;
   try{
     const response=await fetch('./musica/playlist.json',{cache:'no-store'});
     if(!response.ok)throw new Error('playlist no disponible');
@@ -555,19 +552,21 @@ async function loadSiteMusic() {
     else if(musicRequestedByUser){musicRequestedByUser=false;toast('No se encuentra el audio indicado en musica/playlist.json','tap')}
   });
   updateMusicButton(false);
-  if(localStorage.getItem('nexoraMusicPaused')!=='on')startSiteMusic(false);
+  // Los navegadores pueden bloquear autoplay hasta que haya una interacción.
+  // Intentamos reproducir en cada visita y reintentamos tras el primer gesto.
+  startSiteMusic(false);
 }
 
 function resumeMusicAfterGesture(event) {
   if(event?.target?.closest?.('#musicButton'))return;
-  if(musicGesturePending&&localStorage.getItem('nexoraMusicPaused')!=='on')startSiteMusic(false);
+  if(!musicManuallyPaused&&$('#siteMusic').paused)startSiteMusic(false);
 }
 
 async function loadHeroBanners() {
   const heroImage=$('.cinema-image');
   const heroVideo=$('.cinema-video');
   // Respaldo para aperturas file://, donde fetch() no puede leer banners.json.
-  const fallback=['banner.png','banner2.jpg','banener3.jpg'];
+  const fallback=['banner-optimizado.jpg','banner2-optimizado.jpg','banener3.jpg'];
   try{
     const response=await fetch('./imagenes/banner/banners.json',{cache:'no-store'});
     if(!response.ok)throw new Error('banners no disponibles');
@@ -712,7 +711,7 @@ function ensureSkinViewer(){
   if(!window.skinview3d?.SkinViewer){setSkinViewerStatus('El visor 3D no se pudo cargar. Puedes seguir guardando skins.',true);return false}
   const bounds=stage.getBoundingClientRect();
   try{
-    skinViewerInstance=new window.skinview3d.SkinViewer({canvas,width:Math.max(220,Math.round(bounds.width)),height:Math.max(260,Math.round(bounds.height)),pixelRatio:Math.min(window.devicePixelRatio||1,1.5),skin:'./imagenes/elementos/skindefault.png',model:playerModel==='alex'?'slim':'default',zoom:.72,background:null,enableControls:true});
+    skinViewerInstance=new window.skinview3d.SkinViewer({canvas,width:Math.max(220,Math.round(bounds.width)),height:Math.max(260,Math.round(bounds.height)),pixelRatio:Math.min(window.devicePixelRatio||1,1.5),skin:'./imagenes/elementos/skindefault.png',model:playerModel==='alex'?'slim':'default',zoom:.72,background:null,enableControls:true,preserveDrawingBuffer:true});
     // Keep the avatar completely still; OrbitControls still lets the user drag it manually.
     skinViewerInstance.autoRotate=false;
     skinViewerInstance.animation=null;
@@ -734,11 +733,11 @@ async function refreshSkinViewer(){
     if(activeSkinId&&!active){activeSkinId='';localStorage.removeItem('nexoraActiveSkin')}
     let source='./imagenes/elementos/skindefault.png';
     if(active){nextUrl=URL.createObjectURL(active.blob);source=nextUrl}
-    if(playerEquipment.armor!=='none')source=await createArmoredSkin(source,playerEquipment.armor);
+    if(playerEquipment.armor!=='none')source=await createArmoredSkin(source,playerEquipment.armor,playerEquipment.trim);
     try{await skinViewerInstance.loadSkin(source,{model:modelType})}
     catch(error){
       console.error('No se pudo cargar la skin seleccionada:',error);
-      if(active){if(nextUrl)URL.revokeObjectURL(nextUrl);nextUrl='';activeSkinId='';localStorage.removeItem('nexoraActiveSkin');source='./imagenes/elementos/skindefault.png';if(playerEquipment.armor!=='none')source=await createArmoredSkin(source,playerEquipment.armor);await skinViewerInstance.loadSkin(source,{model:modelType});fallbackMessage='La skin guardada falló; se restauró la skin default.'}
+      if(active){if(nextUrl)URL.revokeObjectURL(nextUrl);nextUrl='';activeSkinId='';localStorage.removeItem('nexoraActiveSkin');source='./imagenes/elementos/skindefault.png';if(playerEquipment.armor!=='none')source=await createArmoredSkin(source,playerEquipment.armor,playerEquipment.trim);await skinViewerInstance.loadSkin(source,{model:modelType});fallbackMessage='La skin guardada falló; se restauró la skin default.'}
       else{await skinViewerInstance.loadSkin(createStarterSkin(playerModel),{model:modelType});fallbackMessage='No se pudo abrir skindefault.png; se muestra la skin de respaldo.'}
     }
     if(currentViewerSkinUrl)URL.revokeObjectURL(currentViewerSkinUrl);
@@ -756,7 +755,7 @@ function makeCapeTexture(){
   const context=canvas.getContext('2d');context.fillStyle='#765448';context.fillRect(0,0,64,32);context.fillStyle='#b39378';context.fillRect(1,1,62,2);context.fillRect(1,29,62,2);context.fillStyle='#342620';context.fillRect(5,5,54,22);context.fillStyle='#c5a288';context.fillRect(29,7,6,18);context.fillRect(23,13,18,6);return canvas;
 }
 
-async function createArmoredSkin(source,type){
+async function createArmoredSkin(source,type,trimPattern='none'){
   const image=new Image();
   const imageReady=new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=()=>reject(new Error('No se pudo leer la textura de armadura'))});
   image.src=typeof source==='string'?source:source.toDataURL('image/png');
@@ -769,12 +768,27 @@ async function createArmoredSkin(source,type){
   armorRect(32,0,32,16); // casco exterior
   armorRect(16,32,24,16);armorRect(40,32,16,16); // peto y brazos
   armorRect(0,32,16,16);armorRect(0,48,16,16);armorRect(16,48,16,16);armorRect(48,48,16,16); // piernas y botas
+  const trimColors={coast:'#8fd4cf',dune:'#f0d38c',sentry:'#be83d6',vex:'#e2e2dc',ward:'#74a4db'};
+  if(trimColors[trimPattern]){
+    context.fillStyle=trimColors[trimPattern];
+    const pixel=(x,y)=>context.fillRect(x,y,2,2);
+    const motifs={
+      coast:[[20,34],[24,36],[28,38],[32,40],[36,42],[20,44]],
+      dune:[[26,34],[24,36],[26,38],[28,36],[30,34],[28,42],[26,44],[28,46]],
+      sentry:[[26,34],[30,34],[22,38],[34,38],[26,42],[30,42],[26,46],[30,46]],
+      vex:[[24,34],[32,34],[26,36],[30,36],[28,38],[26,40],[30,40],[24,42],[32,42],[26,44],[30,44]],
+      ward:[[28,34],[24,36],[32,36],[22,40],[34,40],[24,44],[32,44],[28,46]]
+    };
+    motifs[trimPattern].forEach(([x,y])=>pixel(x,y));
+    [[34,2],[40,4],[46,2],[50,6],[54,4],[58,2]].forEach(([x,y])=>pixel(x,y));
+  }
   return canvas.toDataURL('image/png');
 }
 
 function syncWorkbench(){
   $$('[data-back-item]').forEach(button=>button.classList.toggle('is-equipped',button.dataset.backItem===playerEquipment.back));
   $$('[data-armor-item]').forEach(button=>button.classList.toggle('is-equipped',button.dataset.armorItem===playerEquipment.armor));
+  $$('[data-armor-trim]').forEach(button=>button.classList.toggle('is-equipped',button.dataset.armorTrim===playerEquipment.trim));
   $$('[data-weapon-item]').forEach(button=>button.classList.toggle('is-equipped',button.dataset.weaponItem===playerEquipment.weapon));
 }
 
@@ -823,23 +837,55 @@ function renderProfile(){
 applyPlayerProfile();
 
 document.addEventListener('click', event=>{
+  const toolsToggle=event.target.closest('[data-tools-toggle]');
+  if(toolsToggle){const menu=$('#toolsMenu');menu.hidden=!menu.hidden;toolsToggle.setAttribute('aria-expanded',String(!menu.hidden));playSound('tap');return}
+  const tool=event.target.closest('[data-tool-action]');
+  if(tool){
+    closeToolsMenu();
+    if(tool.dataset.toolAction==='skin'){navigate('profile');return}
+    if(tool.dataset.toolAction==='armor'){
+      navigate('profile');
+      const workbench=$('#skinWorkbench');if(workbench?.hidden)$('#openSkinWorkbench').click();
+      return;
+    }
+    return;
+  }
   const navigation=event.target.closest('[data-page]');
   if(navigation){navigate(navigation.dataset.page);return;}
-  if(event.target.closest('button') && !event.target.closest('[data-favorite],[data-copy],[data-detail],[data-open],[data-screenshot],[data-save-mod],#openPublish,#downloadNotice,#soundButton,#musicButton,#themeButton,#clearRecent,#resetLocal,[type="submit"]')) playSound('tap');
+  if(!event.target.closest('.tools-nav-wrap'))closeToolsMenu();
+  if(event.target.closest('button') && !event.target.closest('[data-copy],[data-detail],[data-open],[data-screenshot],[data-save-mod],#openPublish,#downloadNotice,#soundButton,#musicButton,#themeButton,#clearRecent,#resetLocal,[type="submit"]')) playSound('tap');
 });
 
 $('#openPublish').onclick=publish;
 $('#closeModal').onclick=closeModal;
 overlay.addEventListener('click',event=>{if(event.target===overlay)closeModal()});
-document.addEventListener('keydown',event=>{if(event.key==='Escape'&&overlay.classList.contains('open'))closeModal()});
+document.addEventListener('keydown',event=>{if(event.key==='Escape'){closeToolsMenu();if(overlay.classList.contains('open'))closeModal()}});
 $('#downloadNotice').onclick=()=>toast('La descarga de NEXORA Beta estará disponible muy pronto');
+$('#downloadSkinRender').onclick=()=>{
+  const canvas=$('#skin3dCanvas');
+  try{canvas.toBlob(blob=>{if(!blob){toast('No se pudo exportar el render. Gira el personaje y vuelve a intentar.');return}const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download='nexora-skin-render.png';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000)},'image/png')}
+  catch{toast('No se pudo exportar el render de skin')}
+};
 $$('[data-screenshot]').forEach(button=>button.addEventListener('click',()=>{
   $('#modalTitle').textContent=button.dataset.screenshot;
   $('#modalContent').innerHTML=button.dataset.loadedImage?`<img class="screenshot-preview" src="${button.dataset.loadedImage}" alt="${button.dataset.screenshot}">`:'<div class="preview-placeholder"><span>✧</span><strong>CAPTURA EN PREPARACIÓN</strong><small>El equipo de NEXORA añadirá aquí una imagen real del launcher.</small></div>';
   overlay.classList.add('open');document.body.classList.add('modal-open');playSound('open');
 }));
 $$('.screenshot-slot[data-image]').forEach(button=>{const image=new Image();image.onload=()=>{const frame=$('.slot-frame',button);image.className='slot-image';image.alt='';frame.append(image);frame.classList.add('has-image');button.dataset.loadedImage=image.src};image.src=button.dataset.image});
-$$('.creator-photo').forEach(image=>{const showPhoto=()=>image.parentElement.classList.add('has-photo');image.addEventListener('load',showPhoto,{once:true});image.addEventListener('error',()=>image.remove(),{once:true});if(image.complete&&image.naturalWidth)showPhoto()});
+$$('.creator-photo').forEach(image=>{
+  const showPhoto=()=>{
+    image.parentElement.classList.add('has-photo');
+    if(image.classList.contains('profile-photo-back'))image.parentElement.classList.add('has-second-photo');
+  };
+  image.addEventListener('load',showPhoto,{once:true});
+  image.addEventListener('error',()=>{if(image.classList.contains('profile-photo-back'))image.parentElement.classList.add('missing-second-photo');image.remove()},{once:true});
+  if(image.complete&&image.naturalWidth)showPhoto();
+});
+$$('.profile-flip').forEach(photo=>{
+  const flip=()=>{const flipped=photo.classList.toggle('is-flipped');photo.setAttribute('aria-pressed',String(flipped))};
+  photo.addEventListener('click',flip);
+  photo.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();flip()}});
+});
 $$('[data-coming]').forEach(link=>link.addEventListener('click',event=>{event.preventDefault();toast(`${link.dataset.coming}: enlace próximamente`)}));
 const heroImage=$('.cinema-image');
 if(!matchMedia('(prefers-reduced-motion: reduce)').matches){
@@ -864,8 +910,8 @@ $('#clearPlayActivity').onclick=()=>{playSessions=[];localStorage.removeItem('ne
 $('#soundButton').onclick=()=>setSound(!soundEnabled);
 $('#musicButton').onclick=()=>{
   const audio=$('#siteMusic');
-  if(!audio.paused){audio.pause();musicGesturePending=false;musicRequestedByUser=false;localStorage.setItem('nexoraMusicPaused','on');updateMusicButton(false)}
-  else startSiteMusic(true);
+  if(!audio.paused){audio.pause();musicGesturePending=false;musicRequestedByUser=false;musicManuallyPaused=true;localStorage.setItem('nexoraMusicPaused','on');updateMusicButton(false)}
+  else {musicManuallyPaused=false;startSiteMusic(true)}
 };
 document.addEventListener('pointerdown',resumeMusicAfterGesture,{passive:true});
 document.addEventListener('keydown',resumeMusicAfterGesture);
@@ -927,14 +973,15 @@ $('#openSkinWorkbench').addEventListener('click',()=>{const panel=$('#skinWorkbe
 $('#closeSkinWorkbench').addEventListener('click',()=>{$('#skinWorkbench').hidden=true;$('#openSkinWorkbench').setAttribute('aria-expanded','false')});
 $('#skinWorkbench').addEventListener('click',event=>{
   const emote=event.target.closest('[data-emote]');if(emote){playEmote(emote.dataset.emote);return}
-  const choice=event.target.closest('[data-back-item],[data-armor-item],[data-weapon-item]');if(!choice)return;
+  const choice=event.target.closest('[data-back-item],[data-armor-item],[data-armor-trim],[data-weapon-item]');if(!choice)return;
   if(choice.dataset.backItem)playerEquipment.back=choice.dataset.backItem;
   if(choice.dataset.armorItem)playerEquipment.armor=choice.dataset.armorItem;
+  if(choice.dataset.armorTrim)playerEquipment.trim=choice.dataset.armorTrim;
   if(choice.dataset.weaponItem)playerEquipment.weapon=choice.dataset.weaponItem;
   localStorage.setItem('nexoraEquipment',JSON.stringify(playerEquipment));syncWorkbench();refreshSkinViewer();
 });
-$('#resetLocal').onclick=async()=>{for(const key of ['nexoraFavs','nexoraRecent','nexoraPendingServers','nexoraProfile','nexoraActiveSkin','nexoraSkinModel','nexoraEquipment','nexoraSavedServers','nexoraLibraryProfiles','nexoraSelectedLibraryProfile','nexoraPlaySessions','nexoraSavedMods'])localStorage.removeItem(key);favorites.clear();recent=[];savedMods=[];playSessions=[];playerProfile={...defaultPlayerProfile};activeSkinId='';playerModel='steve';playerEquipment={...defaultEquipment};await clearSavedSkins();applyPlayerProfile();renderRecent();renderServers();renderFavorites();renderModResults();renderProfile();renderPlayActivity();toast('Datos locales borrados')};
-renderServers();renderFavorites();renderSavedModCount();renderPlayActivity();navigate('home',{silent:true});
+$('#resetLocal').onclick=async()=>{for(const key of ['nexoraRecent','nexoraPendingServers','nexoraProfile','nexoraActiveSkin','nexoraSkinModel','nexoraEquipment','nexoraSavedServers','nexoraLibraryProfiles','nexoraSelectedLibraryProfile','nexoraPlaySessions','nexoraSavedMods'])localStorage.removeItem(key);recent=[];savedMods=[];playSessions=[];playerProfile={...defaultPlayerProfile};activeSkinId='';playerModel='steve';playerEquipment={...defaultEquipment};await clearSavedSkins();applyPlayerProfile();renderRecent();renderServers();renderModResults();renderProfile();renderPlayActivity();toast('Datos locales borrados')};
+renderServers();renderSavedModCount();renderPlayActivity();navigate('home',{silent:true});
 setTheme(darkMode,false);
 
 // Estela Glow del puntero: se activa solo en dispositivos con mouse y respeta movimiento reducido.
